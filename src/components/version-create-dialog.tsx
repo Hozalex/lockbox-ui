@@ -90,7 +90,10 @@ export function VersionCreateDialog({
     setError(null);
     setSaving(true);
 
-    let payloadEntries: { key: string; textValue: string }[] = [];
+    // payloadEntries describes changes to the base (current) version:
+    //  - { key, textValue } — add or update a key
+    //  - { key } (no value) — remove a key from the version
+    let payloadEntries: { key: string; textValue?: string }[] = [];
 
     if (jsonMode) {
       try {
@@ -114,15 +117,28 @@ export function VersionCreateDialog({
           key: k,
           textValue: v,
         }));
+
+        // Entries marked for removal: send key-only (no textValue) to delete
+        const removedKeys = entries
+          .filter((e) => e.removed && !e.isNew)
+          .map((e) => ({ key: e.key }));
+        payloadEntries.push(...removedKeys);
       } catch {
         setError("Невалидный JSON");
         setSaving(false);
         return;
       }
     } else {
+      // Active entries: add/update
       payloadEntries = entries
         .filter((e) => !e.removed && e.key.trim())
         .map((e) => ({ key: e.key, textValue: e.value }));
+
+      // Removed entries: send key-only (no textValue) to delete from version
+      const removedKeys = entries
+        .filter((e) => e.removed && !e.isNew && e.key.trim())
+        .map((e) => ({ key: e.key }));
+      payloadEntries.push(...removedKeys);
     }
 
     const keyError = validateKeys(payloadEntries.map((e) => e.key));
