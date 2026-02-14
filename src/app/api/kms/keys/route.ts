@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listKmsKeys } from "@/lib/yc-api";
+import { log } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
   const folderId = request.nextUrl.searchParams.get("folderId");
@@ -17,6 +18,7 @@ export async function GET(request: NextRequest) {
     // If user has no KMS access — return empty list with error message,
     // so UI can fall back to manual input
     const message = (e as Error).message || "Unknown error";
+    log.warn(`GET /api/kms/keys (folderId=${folderId}):`, message);
     return NextResponse.json({ keys: [], error: message });
   }
 }

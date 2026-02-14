@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listVersions, addVersion } from "@/lib/yc-api";
+import { log } from "@/lib/logger";
 import type { AddVersionRequest } from "@/lib/types";
 
 export async function GET(
@@ -15,6 +16,7 @@ export async function GET(
     return NextResponse.json(data);
   } catch (e) {
     const err = e as { status?: number; message?: string };
+    log.error(`GET /api/secrets/${secretId}/versions:`, err.message);
     return NextResponse.json(
       { error: err.message },
       { status: err.status || 500 }
@@ -30,9 +32,11 @@ export async function POST(
   try {
     const body: AddVersionRequest = await request.json();
     const data = await addVersion(secretId, body);
+    log.info(`Version added to secret ${secretId}`);
     return NextResponse.json(data);
   } catch (e) {
     const err = e as { status?: number; message?: string };
+    log.error(`POST /api/secrets/${secretId}/versions:`, err.message);
     return NextResponse.json(
       { error: err.message },
       { status: err.status || 500 }

@@ -94,6 +94,12 @@ export function SecretCreateDialog({
 
   const handleSubmit = async () => {
     setError(null);
+
+    if (name.trim() && !NAME_REGEX.test(name.trim())) {
+      setError("Невалидное имя: допустимы только латиница, цифры, _, -, .");
+      return;
+    }
+
     setSaving(true);
 
     let payloadEntries: { key: string; textValue: string }[] = [];

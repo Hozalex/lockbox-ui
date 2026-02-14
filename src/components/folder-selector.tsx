@@ -51,10 +51,19 @@ export function FolderSelector({
     setLoading(true);
     fetch(`/api/folders?cloudId=${cloudId}`)
       .then((r) => r.json())
-      .then((data) => setFolders(data.folders || []))
+      .then((data) => {
+        const list: Folder[] = (data.folders || []).sort(
+          (a: Folder, b: Folder) => a.name.localeCompare(b.name)
+        );
+        setFolders(list);
+        // Auto-select first folder if none selected
+        if (!selectedFolderId && list.length > 0) {
+          onSelect(list[0].id, list[0].name);
+        }
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [selectedFolderId, onSelect]);
 
   useEffect(() => {
     if (selectedCloudId) {

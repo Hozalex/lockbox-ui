@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/session-provider";
 import { Button } from "@/components/ui/button";
 import { FolderSelector } from "@/components/folder-selector";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 interface HeaderProps {
   folderId: string | null;
@@ -31,11 +32,14 @@ export function Header({ folderId, onFolderChange }: HeaderProps) {
             />
           )}
         </div>
-        {authenticated && (
-          <Button variant="outline" size="sm" onClick={handleLogout}>
-            Выйти
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          {authenticated && (
+            <Button variant="outline" size="sm" onClick={handleLogout}>
+              Выйти
+            </Button>
+          )}
+        </div>
       </div>
     </header>
   );

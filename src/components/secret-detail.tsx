@@ -19,6 +19,16 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { ValueCell } from "@/components/value-cell";
@@ -38,11 +48,14 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
   const [loading, setLoading] = useState(true);
   const [showVersionDialog, setShowVersionDialog] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [rollingBack, setRollingBack] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"table" | "json">("table");
   const [jsonCopied, setJsonCopied] = useState(false);
 
   const loadSecret = useCallback(() => {
-    fetch(`/api/secrets/${secretId}`)
+    return fetch(`/api/secrets/${secretId}`)
       .then((r) => r.json())
       .then(setSecret)
       .catch(console.error);
@@ -51,7 +64,7 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
   const loadPayload = useCallback(
     (versionId?: string) => {
       const qs = versionId ? `?versionId=${versionId}` : "";
-      fetch(`/api/secrets/${secretId}/payload${qs}`)
+      return fetch(`/api/secrets/${secretId}/payload${qs}`)
         .then((r) => r.json())
         .then((data) => {
           setEntries(data.entries || []);
@@ -63,7 +76,7 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
   );
 
   const loadVersions = useCallback(() => {
-    fetch(`/api/secrets/${secretId}/versions`)
+    return fetch(`/api/secrets/${secretId}/versions`)
       .then((r) => r.json())
       .then((data) => setVersions(data.versions || []))
       .catch(console.error);
@@ -77,7 +90,6 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
   }, [loadSecret, loadPayload, loadVersions]);
 
   const handleDelete = async () => {
-    if (!confirm("Удалить секрет? Это действие необратимо.")) return;
     setDeleting(true);
     try {
       await fetch(`/api/secrets/${secretId}`, { method: "DELETE" });
@@ -116,6 +128,49 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
       loadVersions();
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleRollback = async (versionId: string) => {
+    setRollingBack(versionId);
+    try {
+      // 1. Load payload of the target version
+      const payloadRes = await fetch(
+        `/api/secrets/${secretId}/payload?versionId=${versionId}`
+      );
+      const payloadData = await payloadRes.json();
+      const versionEntries = payloadData.entries || [];
+
+      if (versionEntries.length === 0) {
+        alert("Нет записей в этой версии");
+        return;
+      }
+
+      // 2. Create a new version with the same data
+      const res = await fetch(`/api/secrets/${secretId}/versions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description: `Откат к версии ${versionId.substring(0, 8)}...`,
+          payloadEntries: versionEntries.map((e: { key: string; textValue?: string; binaryValue?: string }) => ({
+            key: e.key,
+            textValue: e.textValue || e.binaryValue || "",
+          })),
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || `Ошибка: HTTP ${res.status}`);
+        return;
+      }
+
+      // 3. Reload everything
+      await Promise.all([loadSecret(), loadPayload(), loadVersions()]);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setRollingBack(null);
     }
   };
 
@@ -162,7 +217,10 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
           <Button
             variant="destructive"
             size="sm"
-            onClick={handleDelete}
+            onClick={() => {
+              setDeleteConfirmText("");
+              setShowDeleteDialog(true);
+            }}
             disabled={deleting || secret.deletionProtection}
           >
             {deleting ? "Удаление..." : "Удалить"}
@@ -379,29 +437,42 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
                   </TableCell>
                   <TableCell>{v.payloadEntryKeys?.length || 0}</TableCell>
                   <TableCell>
-                    {v.status === "ACTIVE" &&
-                      v.id !== secret.currentVersion?.id && (
+                    <div className="flex gap-1 flex-wrap">
+                      {v.status === "ACTIVE" &&
+                        v.id !== secret.currentVersion?.id && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs"
+                              disabled={rollingBack === v.id}
+                              onClick={() => handleRollback(v.id)}
+                            >
+                              {rollingBack === v.id ? "Откат..." : "Сделать текущей"}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs"
+                              onClick={() =>
+                                handleScheduleDestruction(v.id, "604800s")
+                              }
+                            >
+                              Удалить через 7д
+                            </Button>
+                          </>
+                        )}
+                      {v.status === "SCHEDULED_FOR_DESTRUCTION" && (
                         <Button
                           variant="outline"
                           size="sm"
                           className="text-xs"
-                          onClick={() =>
-                            handleScheduleDestruction(v.id, "604800s")
-                          }
+                          onClick={() => handleCancelDestruction(v.id)}
                         >
-                          Удалить через 7д
+                          Отменить удаление
                         </Button>
                       )}
-                    {v.status === "SCHEDULED_FOR_DESTRUCTION" && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-xs"
-                        onClick={() => handleCancelDestruction(v.id)}
-                      >
-                        Отменить удаление
-                      </Button>
-                    )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -422,6 +493,43 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
           setShowVersionDialog(false);
         }}
       />
+
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Удаление секрета</DialogTitle>
+            <DialogDescription>
+              Это действие необратимо. Для подтверждения введите{" "}
+              <span className="font-mono font-bold">delete</span> ниже.
+            </DialogDescription>
+          </DialogHeader>
+          <div>
+            <Label htmlFor="deleteConfirm">Подтверждение</Label>
+            <Input
+              id="deleteConfirm"
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder="delete"
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+              Отмена
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteConfirmText !== "delete" || deleting}
+              onClick={() => {
+                setShowDeleteDialog(false);
+                handleDelete();
+              }}
+            >
+              {deleting ? "Удаление..." : "Удалить секрет"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

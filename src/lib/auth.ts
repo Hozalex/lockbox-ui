@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { log } from "@/lib/logger";
 
 const OAUTH_COOKIE = "oauth_token";
 const IAM_COOKIE = "iam_token";
@@ -33,13 +34,15 @@ export async function getIamToken(): Promise<string | null> {
 
       if (res.ok) {
         const data = await res.json();
+        log.info("IAM token refreshed via OAuth");
         // Note: we can't set cookies in a read context (server components / API route handlers
         // that already started streaming). The new IAM token will be used for this request only.
         // The next request through /api/auth GET will detect expiry and the client will re-auth.
         return data.iamToken as string;
       }
+      log.warn("IAM token refresh failed:", res.status);
     } catch (e) {
-      console.error("IAM token refresh failed:", e);
+      log.error("IAM token refresh error:", e);
     }
   }
 

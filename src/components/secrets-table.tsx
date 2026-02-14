@@ -34,8 +34,21 @@ export function SecretsTable({ folderId, onCreateClick }: SecretsTableProps) {
     setLoading(true);
     setError(null);
     fetch(`/api/secrets?folderId=${folderId}`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      .then(async (r) => {
+        if (!r.ok) {
+          if (r.status === 403) {
+            throw new Error("Нет доступа к секретам в этом каталоге. Проверьте права IAM-токена.");
+          }
+          const body = await r.text().catch(() => "");
+          let msg = `HTTP ${r.status}`;
+          try {
+            const parsed = JSON.parse(body);
+            if (parsed.error) msg = parsed.error;
+          } catch {
+            // use default msg
+          }
+          throw new Error(msg);
+        }
         return r.json();
       })
       .then((data) => setSecrets(data.secrets || []))

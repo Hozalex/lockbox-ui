@@ -1,4 +1,5 @@
 import { getIamToken } from "@/lib/auth";
+import { log } from "@/lib/logger";
 
 const LOCKBOX_API = "https://cpl.lockbox.api.yandexcloud.kz/lockbox/v1";
 const PAYLOAD_API =
@@ -25,14 +26,30 @@ async function requireIamToken(): Promise<string> {
   return token;
 }
 
+// Parse YC API error body into a human-readable message
+function parseYCError(status: number, body: string): string {
+  try {
+    const parsed = JSON.parse(body);
+    if (parsed.message) return parsed.message;
+  } catch {
+    // not JSON
+  }
+  if (!body.trim()) return `HTTP ${status}`;
+  return body;
+}
+
 async function request<T>(
   baseUrl: string,
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
   const iamToken = await requireIamToken();
+  const method = options.method || "GET";
+  const url = `${baseUrl}${path}`;
 
-  const res = await fetch(`${baseUrl}${path}`, {
+  log.debug(`${method} ${url}`);
+
+  const res = await fetch(url, {
     ...options,
     headers: {
       Authorization: `Bearer ${iamToken}`,
@@ -45,15 +62,20 @@ async function request<T>(
     const body = await res.text();
     // YC KZ API returns 404 with empty body for empty lists
     if (res.status === 404 && !body.trim()) {
+      log.debug(`${method} ${url} → 404 (empty, treating as empty list)`);
       return {} as T;
     }
-    throw new YCApiError(res.status, body);
+    const message = parseYCError(res.status, body);
+    log.error(`${method} ${url} → ${res.status}:`, message);
+    throw new YCApiError(res.status, message);
   }
 
   const text = await res.text();
   if (!text.trim()) {
+    log.debug(`${method} ${url} → ${res.status} (empty body)`);
     return {} as T;
   }
+  log.debug(`${method} ${url} → ${res.status}`);
   return JSON.parse(text);
 }
 

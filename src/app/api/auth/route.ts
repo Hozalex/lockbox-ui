@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { log } from "@/lib/logger";
 
 const OAUTH_COOKIE = "oauth_token";
 const IAM_COOKIE = "iam_token";
@@ -13,6 +14,16 @@ const COOKIE_OPTS = {
   path: "/",
 };
 
+function parseYCError(body: string): string {
+  try {
+    const parsed = JSON.parse(body);
+    if (parsed.message) return parsed.message;
+  } catch {
+    // not JSON
+  }
+  return body.trim() || "Unknown error";
+}
+
 async function exchangeOAuthForIAM(
   oauthToken: string
 ): Promise<{ iamToken: string; expiresAt: string }> {
@@ -24,7 +35,9 @@ async function exchangeOAuthForIAM(
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`IAM exchange failed: ${body}`);
+    const message = parseYCError(body);
+    log.error(`IAM exchange failed (${res.status}):`, message);
+    throw new Error(message);
   }
 
   const data = await res.json();
@@ -44,6 +57,7 @@ export async function POST(request: NextRequest) {
 
     // Exchange OAuth → IAM
     const { iamToken, expiresAt } = await exchangeOAuthForIAM(token);
+    log.info("OAuth → IAM exchange successful");
 
     // Validate IAM token works
     const testRes = await fetch(
@@ -53,8 +67,10 @@ export async function POST(request: NextRequest) {
 
     if (!testRes.ok) {
       const body = await testRes.text();
+      const message = parseYCError(body);
+      log.error(`Token validation failed (${testRes.status}):`, message);
       return NextResponse.json(
-        { error: `Token validation failed: ${body}` },
+        { error: `Не удалось проверить токен: ${message}` },
         { status: 401 }
       );
     }
@@ -79,10 +95,13 @@ export async function POST(request: NextRequest) {
       maxAge: 12 * 60 * 60,
     });
 
+    log.info("Authentication successful");
     return response;
   } catch (e) {
+    const message = (e as Error).message;
+    log.error("Auth POST error:", message);
     return NextResponse.json(
-      { error: (e as Error).message },
+      { error: message },
       { status: 500 }
     );
   }
@@ -90,6 +109,7 @@ export async function POST(request: NextRequest) {
 
 // DELETE /api/auth — clear all tokens (logout)
 export async function DELETE() {
+  log.info("Logout");
   const response = NextResponse.json({ ok: true });
   for (const name of [OAUTH_COOKIE, IAM_COOKIE, IAM_EXPIRES_COOKIE]) {
     response.cookies.set(name, "", { ...COOKIE_OPTS, maxAge: 0 });
