@@ -27,6 +27,8 @@ interface VersionCreateDialogProps {
   onOpenChange: (open: boolean) => void;
   secretId: string;
   currentEntries: PayloadEntry[];
+  currentVersionId: string;
+  onConflict: () => void;
   onSuccess: () => void;
 }
 
@@ -35,6 +37,8 @@ export function VersionCreateDialog({
   onOpenChange,
   secretId,
   currentEntries,
+  currentVersionId,
+  onConflict,
   onSuccess,
 }: VersionCreateDialogProps) {
   const [description, setDescription] = useState("");
@@ -155,6 +159,16 @@ export function VersionCreateDialog({
     }
 
     try {
+      // Optimistic lock: check that no one else changed the secret
+      const checkRes = await fetch(`/api/secrets/${secretId}`);
+      if (checkRes.ok) {
+        const fresh = await checkRes.json();
+        if (fresh.currentVersion?.id && fresh.currentVersion.id !== currentVersionId) {
+          onConflict();
+          return;
+        }
+      }
+
       const res = await fetch(`/api/secrets/${secretId}/versions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

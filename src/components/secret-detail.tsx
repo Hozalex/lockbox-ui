@@ -53,6 +53,7 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
   const [rollingBack, setRollingBack] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"table" | "json">("table");
   const [jsonCopied, setJsonCopied] = useState(false);
+  const [conflictDialog, setConflictDialog] = useState(false);
 
   const loadSecret = useCallback(() => {
     return fetch(`/api/secrets/${secretId}`)
@@ -131,9 +132,38 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
     }
   };
 
+  const checkVersionConflict = async (): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/secrets/${secretId}`);
+      if (res.ok) {
+        const fresh = await res.json();
+        if (
+          fresh.currentVersion?.id &&
+          secret?.currentVersion?.id &&
+          fresh.currentVersion.id !== secret.currentVersion.id
+        ) {
+          setConflictDialog(true);
+          return true;
+        }
+      }
+    } catch {
+      // network error — proceed, the actual request will fail
+    }
+    return false;
+  };
+
+  const reloadAll = async () => {
+    setConflictDialog(false);
+    setLoading(true);
+    await Promise.all([loadSecret(), loadPayload(), loadVersions()]);
+    setLoading(false);
+  };
+
   const handleRollback = async (versionId: string) => {
     setRollingBack(versionId);
     try {
+      if (await checkVersionConflict()) return;
+
       // 1. Load payload of the target version
       const payloadRes = await fetch(
         `/api/secrets/${secretId}/payload?versionId=${versionId}`
@@ -486,6 +516,11 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
         onOpenChange={setShowVersionDialog}
         secretId={secretId}
         currentEntries={entries}
+        currentVersionId={secret.currentVersion?.id || ""}
+        onConflict={() => {
+          setShowVersionDialog(false);
+          setConflictDialog(true);
+        }}
         onSuccess={() => {
           loadSecret();
           loadPayload();
@@ -493,6 +528,23 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
           setShowVersionDialog(false);
         }}
       />
+
+      <Dialog open={conflictDialog} onOpenChange={setConflictDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Секрет был изменён</DialogTitle>
+            <DialogDescription>
+              Другой пользователь изменил этот секрет, пока вы его редактировали.
+              Необходимо перезагрузить данные перед внесением изменений.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={reloadAll}>
+              Перезагрузить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent className="max-w-md">
