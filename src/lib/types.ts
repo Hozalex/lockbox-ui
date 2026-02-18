@@ -40,6 +40,16 @@ export interface PayloadEntryChange {
   binaryValue?: string;
 }
 
+export interface CloneSecretData {
+  name: string;
+  description: string;
+  kmsKeyId?: string;
+  deletionProtection: boolean;
+  labels: Record<string, string>;
+  entries: PayloadEntry[];
+  sourceFolderId: string;
+}
+
 export interface CreateSecretRequest {
   folderId: string;
   name: string;

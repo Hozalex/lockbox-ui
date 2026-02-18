@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { FolderSelector } from "@/components/folder-selector";
+import type { CloneSecretData } from "@/lib/types";
 
 interface KeyValue {
   key: string;
@@ -28,7 +30,8 @@ interface SecretCreateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   folderId: string;
-  onSuccess: () => void;
+  onSuccess: (newSecretId?: string) => void;
+  initialData?: CloneSecretData;
 }
 
 export function SecretCreateDialog({
@@ -36,7 +39,10 @@ export function SecretCreateDialog({
   onOpenChange,
   folderId,
   onSuccess,
+  initialData,
 }: SecretCreateDialogProps) {
+  const isCloneMode = !!initialData;
+
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [kmsKeyId, setKmsKeyId] = useState("");
@@ -52,21 +58,88 @@ export function SecretCreateDialog({
   >([]);
   const [kmsLoading, setKmsLoading] = useState(false);
   const [kmsCustom, setKmsCustom] = useState(false);
+  const [targetFolderId, setTargetFolderId] = useState(folderId);
 
+  // Track previous folderId to detect external changes
+  const prevFolderIdRef = useRef(folderId);
+
+  // Initialize form when dialog opens
   useEffect(() => {
-    if (open && folderId) {
+    if (!open) return;
+
+    if (initialData) {
+      // Clone mode: pre-fill from source secret
+      setName(`${initialData.name}-clone`);
+      setDescription(initialData.description);
+      setKmsKeyId(initialData.kmsKeyId || "");
+      setDeletionProtection(initialData.deletionProtection);
+      setLabels(
+        Object.entries(initialData.labels || {}).map(([key, value]) => ({
+          key,
+          value,
+        }))
+      );
+      setEntries(
+        initialData.entries.length > 0
+          ? initialData.entries.map((e) => ({
+              key: e.key,
+              value: e.textValue || e.binaryValue || "",
+            }))
+          : [{ key: "", value: "" }]
+      );
+      setTargetFolderId(initialData.sourceFolderId);
+    } else {
+      // Create mode: blank form
+      setName("");
+      setDescription("");
+      setKmsKeyId("");
+      setDeletionProtection(false);
+      setEntries([{ key: "", value: "" }]);
+      setLabels([]);
+      setTargetFolderId(folderId);
+    }
+    setJsonInput("");
+    setJsonMode(false);
+    setError(null);
+    setSaving(false);
+  }, [open, initialData, folderId]);
+
+  // Sync targetFolderId when folderId prop changes (non-clone mode)
+  useEffect(() => {
+    if (prevFolderIdRef.current !== folderId && !initialData) {
+      setTargetFolderId(folderId);
+    }
+    prevFolderIdRef.current = folderId;
+  }, [folderId, initialData]);
+
+  // Fetch KMS keys for target folder
+  const prevTargetFolderRef = useRef(targetFolderId);
+  useEffect(() => {
+    if (open && targetFolderId) {
+      const folderChanged = prevTargetFolderRef.current !== targetFolderId;
+      prevTargetFolderRef.current = targetFolderId;
+
+      // Reset KMS selection when user switches to a different folder
+      if (folderChanged) {
+        setKmsKeyId("");
+      }
+
       setKmsLoading(true);
-      fetch(`/api/kms/keys?folderId=${encodeURIComponent(folderId)}`)
+      fetch(`/api/kms/keys?folderId=${encodeURIComponent(targetFolderId)}`)
         .then((r) => r.json())
         .then((data) => {
-          setKmsKeys(data.keys || []);
-          // If no keys or error — fallback to manual input
-          if (!data.keys?.length) setKmsCustom(true);
+          const keys = data.keys || [];
+          setKmsKeys(keys);
+          if (!keys.length) {
+            setKmsCustom(true);
+          } else {
+            setKmsCustom(false);
+          }
         })
         .catch(() => setKmsCustom(true))
         .finally(() => setKmsLoading(false));
     }
-  }, [open, folderId]);
+  }, [open, targetFolderId]);
 
   const NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
   const KEY_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -139,7 +212,7 @@ export function SecretCreateDialog({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          folderId,
+          folderId: targetFolderId,
           name,
           description: description || undefined,
           kmsKeyId: kmsKeyId || undefined,
@@ -155,15 +228,9 @@ export function SecretCreateDialog({
         throw new Error(data.error || `HTTP ${res.status}`);
       }
 
-      // Reset form
-      setName("");
-      setDescription("");
-      setKmsKeyId("");
-      setDeletionProtection(false);
-      setEntries([{ key: "", value: "" }]);
-      setLabels([]);
-      setJsonInput("");
-      onSuccess();
+      const data = await res.json();
+      const newSecretId = data.metadata?.secretId;
+      onSuccess(newSecretId);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -175,13 +242,29 @@ export function SecretCreateDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Создать секрет</DialogTitle>
+          <DialogTitle>
+            {isCloneMode ? "Клонировать секрет" : "Создать секрет"}
+          </DialogTitle>
           <DialogDescription>
-            Создание нового секрета в каталоге
+            {isCloneMode
+              ? "Создание копии секрета с возможностью изменения параметров"
+              : "Создание нового секрета в каталоге"}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
+          {isCloneMode && (
+            <div>
+              <Label>Целевой каталог</Label>
+              <div className="mt-1">
+                <FolderSelector
+                  selectedFolderId={targetFolderId}
+                  onSelect={(id) => setTargetFolderId(id)}
+                />
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="name">Имя *</Label>
@@ -372,7 +455,13 @@ export function SecretCreateDialog({
             Отмена
           </Button>
           <Button onClick={handleSubmit} disabled={saving || !name.trim()}>
-            {saving ? "Создание..." : "Создать"}
+            {saving
+              ? isCloneMode
+                ? "Клонирование..."
+                : "Создание..."
+              : isCloneMode
+                ? "Клонировать"
+                : "Создать"}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -33,6 +33,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { ValueCell } from "@/components/value-cell";
 import { VersionCreateDialog } from "@/components/version-create-dialog";
+import { SecretCreateDialog } from "@/components/secret-create-dialog";
 import type { Secret, PayloadEntry, SecretVersion } from "@/lib/types";
 
 function isValidSecret(data: unknown): data is Secret {
@@ -64,6 +65,7 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
   const [jsonCopied, setJsonCopied] = useState(false);
   const [conflictDialog, setConflictDialog] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [showCloneDialog, setShowCloneDialog] = useState(false);
 
   // Low-level loaders — throw on error (no try/catch), used by loadAll
   const fetchSecret = useCallback(async () => {
@@ -349,6 +351,13 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
             Новая версия
           </Button>
           <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowCloneDialog(true)}
+          >
+            Клонировать
+          </Button>
+          <Button
             variant="destructive"
             size="sm"
             onClick={() => {
@@ -628,6 +637,27 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
         onSuccess={() => {
           setShowVersionDialog(false);
           loadAll();
+        }}
+      />
+
+      <SecretCreateDialog
+        open={showCloneDialog}
+        onOpenChange={setShowCloneDialog}
+        folderId={secret.folderId}
+        initialData={{
+          name: secret.name,
+          description: secret.description || "",
+          kmsKeyId: secret.kmsKeyId,
+          deletionProtection: secret.deletionProtection,
+          labels: secret.labels || {},
+          entries,
+          sourceFolderId: secret.folderId,
+        }}
+        onSuccess={(newSecretId) => {
+          setShowCloneDialog(false);
+          if (newSecretId) {
+            router.push(`/secrets/${newSecretId}`);
+          }
         }}
       />
 
