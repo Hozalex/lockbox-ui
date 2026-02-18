@@ -64,7 +64,11 @@ export function SecretsTable({ folderId, onCreateClick }: SecretsTableProps) {
         }
         return r.json();
       })
-      .then((data) => setSecrets(data.secrets || []))
+      .then((data) => {
+        const list: Secret[] = data.secrets || [];
+        list.sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
+        setSecrets(list);
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [folderId]);

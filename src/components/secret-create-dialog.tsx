@@ -173,7 +173,7 @@ export function SecretCreateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Создать секрет</DialogTitle>
           <DialogDescription>
@@ -328,7 +328,7 @@ export function SecretCreateDialog({
                 onChange={(e) => setJsonInput(e.target.value)}
                 placeholder='{"DB_HOST": "localhost", "DB_PASS": "secret"}'
                 rows={6}
-                className="font-mono text-sm whitespace-pre-wrap break-all"
+                className="font-mono text-sm"
               />
             ) : (
               <>
