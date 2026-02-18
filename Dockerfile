@@ -9,6 +9,8 @@ RUN npm ci --only=production
 # Build
 FROM base AS builder
 WORKDIR /app
+ARG BUILD_VERSION=dev
+ENV NEXT_PUBLIC_BUILD_VERSION=$BUILD_VERSION
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .

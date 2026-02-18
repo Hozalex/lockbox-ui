@@ -193,7 +193,7 @@ export function VersionCreateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Новая версия секрета</DialogTitle>
           <DialogDescription>
@@ -242,7 +242,7 @@ export function VersionCreateDialog({
                 placeholder="ключ"
                 value={entry.key}
                 onChange={(e) => updateEntry(i, "key", e.target.value)}
-                className="w-1/3"
+                className="min-w-[200px] max-w-[400px]"
                 disabled={!entry.isNew && !entry.removed}
               />
               <Input
@@ -281,7 +281,7 @@ export function VersionCreateDialog({
                 onChange={(e) => setJsonInput(e.target.value)}
                 placeholder='{"NEW_KEY": "new_value"}'
                 rows={4}
-                className="font-mono text-sm mt-1"
+                className="font-mono text-sm mt-1 whitespace-pre-wrap break-all"
               />
             </div>
           )}

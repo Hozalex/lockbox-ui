@@ -41,7 +41,8 @@ function parseYCError(status: number, body: string): string {
 async function request<T>(
   baseUrl: string,
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  treat404AsEmpty = false
 ): Promise<T> {
   const iamToken = await requireIamToken();
   const method = options.method || "GET";
@@ -61,7 +62,7 @@ async function request<T>(
   if (!res.ok) {
     const body = await res.text();
     // YC KZ API returns 404 with empty body for empty lists
-    if (res.status === 404 && !body.trim()) {
+    if (res.status === 404 && !body.trim() && treat404AsEmpty) {
       log.debug(`${method} ${url} → 404 (empty, treating as empty list)`);
       return {} as T;
     }
@@ -85,7 +86,9 @@ export function listClouds(pageSize = 100, pageToken?: string) {
   if (pageToken) params.set("pageToken", pageToken);
   return request<{ clouds: Array<{ id: string; name: string; description: string; createdAt: string }>; nextPageToken?: string }>(
     RESOURCE_MANAGER_API,
-    `/clouds?${params}`
+    `/clouds?${params}`,
+    {},
+    true
   );
 }
 
@@ -101,7 +104,9 @@ export function listFolders(
   if (pageToken) params.set("pageToken", pageToken);
   return request<{ folders: Array<{ id: string; cloudId: string; name: string; description: string; createdAt: string; status: string }>; nextPageToken?: string }>(
     RESOURCE_MANAGER_API,
-    `/folders?${params}`
+    `/folders?${params}`,
+    {},
+    true
   );
 }
 
@@ -118,7 +123,9 @@ export function listSecrets(
   if (pageToken) params.set("pageToken", pageToken);
   return request<{ secrets: import("./types").Secret[]; nextPageToken?: string }>(
     LOCKBOX_API,
-    `/secrets?${params}`
+    `/secrets?${params}`,
+    {},
+    true
   );
 }
 
@@ -179,7 +186,9 @@ export function listVersions(
   if (pageToken) params.set("pageToken", pageToken);
   return request<{ versions: import("./types").SecretVersion[]; nextPageToken?: string }>(
     LOCKBOX_API,
-    `/secrets/${secretId}/versions?${params}`
+    `/secrets/${secretId}/versions?${params}`,
+    {},
+    true
   );
 }
 
@@ -245,5 +254,5 @@ export function listKmsKeys(
       defaultAlgorithm: string;
     }>;
     nextPageToken?: string;
-  }>(KMS_API, `/keys?${params}`);
+  }>(KMS_API, `/keys?${params}`, {}, true);
 }

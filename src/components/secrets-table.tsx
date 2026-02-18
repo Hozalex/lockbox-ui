@@ -12,6 +12,12 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Copy, Check } from "lucide-react";
 import type { Secret } from "@/lib/types";
 
 interface SecretsTableProps {
@@ -29,6 +35,13 @@ export function SecretsTable({ folderId, onCreateClick }: SecretsTableProps) {
   const [secrets, setSecrets] = useState<Secret[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const copyId = (id: string) => {
+    navigator.clipboard.writeText(id);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   const loadSecrets = useCallback(() => {
     setLoading(true);
@@ -100,6 +113,7 @@ export function SecretsTable({ folderId, onCreateClick }: SecretsTableProps) {
           <TableHeader>
             <TableRow>
               <TableHead>Имя</TableHead>
+              <TableHead>ID</TableHead>
               <TableHead>Статус</TableHead>
               <TableHead>Ключей</TableHead>
               <TableHead>Создан</TableHead>
@@ -121,6 +135,32 @@ export function SecretsTable({ folderId, onCreateClick }: SecretsTableProps) {
                       {secret.description}
                     </p>
                   )}
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-1">
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {secret.id.substring(0, 10)}...
+                    </span>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={() => copyId(secret.id)}
+                          className="inline-flex h-6 w-6 items-center justify-center rounded hover:bg-muted"
+                        >
+                          {copiedId === secret.id ? (
+                            <Check className="h-3 w-3 text-green-600" />
+                          ) : (
+                            <Copy className="h-3 w-3 text-muted-foreground" />
+                          )}
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {copiedId === secret.id
+                          ? "Скопировано!"
+                          : "Копировать ID"}
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
                 </TableCell>
                 <TableCell>
                   <Badge

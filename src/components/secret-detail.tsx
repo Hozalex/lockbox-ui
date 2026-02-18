@@ -35,6 +35,15 @@ import { ValueCell } from "@/components/value-cell";
 import { VersionCreateDialog } from "@/components/version-create-dialog";
 import type { Secret, PayloadEntry, SecretVersion } from "@/lib/types";
 
+function isValidSecret(data: unknown): data is Secret {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "id" in data &&
+    typeof (data as Secret).id === "string"
+  );
+}
+
 interface SecretDetailProps {
   secretId: string;
 }
@@ -54,41 +63,128 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
   const [viewMode, setViewMode] = useState<"table" | "json">("table");
   const [jsonCopied, setJsonCopied] = useState(false);
   const [conflictDialog, setConflictDialog] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const loadSecret = useCallback(() => {
-    return fetch(`/api/secrets/${secretId}`)
-      .then((r) => r.json())
-      .then(setSecret)
-      .catch(console.error);
+  // Low-level loaders — throw on error (no try/catch), used by loadAll
+  const fetchSecret = useCallback(async () => {
+    const r = await fetch(`/api/secrets/${secretId}`);
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      throw new Error(body.error || `HTTP ${r.status}`);
+    }
+    const data = await r.json();
+    if (!isValidSecret(data)) {
+      throw new Error("Некорректный ответ API");
+    }
+    return data;
   }, [secretId]);
 
-  const loadPayload = useCallback(
-    (versionId?: string) => {
+  const fetchPayload = useCallback(
+    async (versionId?: string) => {
       const qs = versionId ? `?versionId=${versionId}` : "";
-      return fetch(`/api/secrets/${secretId}/payload${qs}`)
-        .then((r) => r.json())
-        .then((data) => {
-          setEntries(data.entries || []);
-          if (data.versionId) setSelectedVersionId(data.versionId);
-        })
-        .catch(console.error);
+      const r = await fetch(`/api/secrets/${secretId}/payload${qs}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return await r.json();
     },
     [secretId]
   );
 
-  const loadVersions = useCallback(() => {
-    return fetch(`/api/secrets/${secretId}/versions`)
-      .then((r) => r.json())
-      .then((data) => setVersions(data.versions || []))
-      .catch(console.error);
+  const fetchVersions = useCallback(async () => {
+    const r = await fetch(`/api/secrets/${secretId}/versions`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
   }, [secretId]);
 
+  // Main loader: secret first, then payload + versions.
+  // Retries up to 3 times for eventual consistency (new secrets).
+  const loadAll = useCallback(
+    async (retry = 0) => {
+      setLoading(true);
+      setLoadError(null);
+
+      try {
+        // 1) Secret must load first — everything depends on it
+        const secretData = await fetchSecret();
+        setSecret(secretData);
+
+        // 2) Payload + versions in parallel
+        const [payloadResult, versionsResult] = await Promise.allSettled([
+          fetchPayload(),
+          fetchVersions(),
+        ]);
+
+        // Handle payload
+        if (payloadResult.status === "fulfilled") {
+          setEntries(payloadResult.value.entries || []);
+          if (payloadResult.value.versionId)
+            setSelectedVersionId(payloadResult.value.versionId);
+        } else if (retry < 3) {
+          // Payload failed — retry once more after delay
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          try {
+            const pl = await fetchPayload();
+            setEntries(pl.entries || []);
+            if (pl.versionId) setSelectedVersionId(pl.versionId);
+          } catch {
+            setEntries([]);
+          }
+        } else {
+          setEntries([]);
+        }
+
+        // Handle versions
+        if (versionsResult.status === "fulfilled") {
+          setVersions(versionsResult.value.versions || []);
+        } else {
+          setVersions([]);
+        }
+
+        setLoadError(null);
+      } catch (e) {
+        console.error("loadAll error:", e);
+        // Secret itself failed — retry for eventual consistency
+        if (retry < 3) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          return loadAll(retry + 1);
+        }
+        setSecret(null);
+        setLoadError((e as Error).message || "Не удалось загрузить секрет");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [fetchSecret, fetchPayload, fetchVersions]
+  );
+
+  // Convenience wrappers for individual reloads
+  const loadPayload = useCallback(
+    async (versionId?: string) => {
+      try {
+        const data = await fetchPayload(versionId);
+        setEntries(data.entries || []);
+        if (data.versionId) setSelectedVersionId(data.versionId);
+      } catch (e) {
+        console.error(e);
+        setEntries([]);
+      }
+    },
+    [fetchPayload]
+  );
+
+  const loadVersions = useCallback(async () => {
+    try {
+      const data = await fetchVersions();
+      setVersions(data.versions || []);
+    } catch (e) {
+      console.error(e);
+      setVersions([]);
+    }
+  }, [fetchVersions]);
+
+  // Initial load
   useEffect(() => {
-    setLoading(true);
-    Promise.all([loadSecret(), loadPayload(), loadVersions()]).finally(() =>
-      setLoading(false)
-    );
-  }, [loadSecret, loadPayload, loadVersions]);
+    loadAll();
+  }, [loadAll]);
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -154,9 +250,7 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
 
   const reloadAll = async () => {
     setConflictDialog(false);
-    setLoading(true);
-    await Promise.all([loadSecret(), loadPayload(), loadVersions()]);
-    setLoading(false);
+    await loadAll();
   };
 
   const handleRollback = async (versionId: string) => {
@@ -196,7 +290,7 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
       }
 
       // 3. Reload everything
-      await Promise.all([loadSecret(), loadPayload(), loadVersions()]);
+      await loadAll();
     } catch (e) {
       console.error(e);
     } finally {
@@ -214,8 +308,18 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
 
   if (!secret) {
     return (
-      <div className="py-8 text-center text-destructive">
-        Секрет не найден
+      <div className="py-8 text-center">
+        <p className="text-destructive">
+          {loadError || "Секрет не найден"}
+        </p>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-4"
+          onClick={reloadAll}
+        >
+          Повторить
+        </Button>
       </div>
     );
   }
@@ -522,10 +626,8 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
           setConflictDialog(true);
         }}
         onSuccess={() => {
-          loadSecret();
-          loadPayload();
-          loadVersions();
           setShowVersionDialog(false);
+          loadAll();
         }}
       />
 
