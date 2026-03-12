@@ -79,14 +79,25 @@ export function SecretCreateDialog({
           value,
         }))
       );
-      setEntries(
+      const mappedEntries =
         initialData.entries.length > 0
           ? initialData.entries.map((e) => ({
               key: e.key,
               value: e.textValue || e.binaryValue || "",
             }))
-          : [{ key: "", value: "" }]
-      );
+          : [{ key: "", value: "" }];
+      setEntries(mappedEntries);
+      // Auto-switch to JSON mode for secrets with many entries
+      if (mappedEntries.length > 5) {
+        const jsonObj = Object.fromEntries(
+          mappedEntries.filter((e) => e.key).map((e) => [e.key, e.value])
+        );
+        setJsonInput(JSON.stringify(jsonObj, null, 2));
+        setJsonMode(true);
+      } else {
+        setJsonInput("");
+        setJsonMode(false);
+      }
       setTargetFolderId(initialData.sourceFolderId);
     } else {
       // Create mode: blank form
@@ -97,9 +108,9 @@ export function SecretCreateDialog({
       setEntries([{ key: "", value: "" }]);
       setLabels([]);
       setTargetFolderId(folderId);
+      setJsonInput("");
+      setJsonMode(false);
     }
-    setJsonInput("");
-    setJsonMode(false);
     setError(null);
     setSaving(false);
   }, [open, initialData, folderId]);
@@ -391,14 +402,42 @@ export function SecretCreateDialog({
                 <Button
                   variant={jsonMode ? "outline" : "secondary"}
                   size="sm"
-                  onClick={() => setJsonMode(false)}
+                  onClick={() => {
+                    // Sync JSON → fields
+                    if (jsonMode && jsonInput.trim()) {
+                      try {
+                        const parsed = JSON.parse(jsonInput);
+                        setEntries(
+                          Object.entries(parsed).map(([k, v]) => ({
+                            key: k,
+                            value: String(v),
+                          }))
+                        );
+                      } catch {
+                        // keep current entries if JSON is invalid
+                      }
+                    }
+                    setJsonMode(false);
+                  }}
                 >
                   Поля
                 </Button>
                 <Button
                   variant={jsonMode ? "secondary" : "outline"}
                   size="sm"
-                  onClick={() => setJsonMode(true)}
+                  onClick={() => {
+                    // Sync fields → JSON
+                    if (!jsonMode) {
+                      const filled = entries.filter((e) => e.key.trim());
+                      if (filled.length > 0) {
+                        const obj = Object.fromEntries(
+                          filled.map((e) => [e.key, e.value])
+                        );
+                        setJsonInput(JSON.stringify(obj, null, 2));
+                      }
+                    }
+                    setJsonMode(true);
+                  }}
                 >
                   JSON
                 </Button>
@@ -410,8 +449,8 @@ export function SecretCreateDialog({
                 value={jsonInput}
                 onChange={(e) => setJsonInput(e.target.value)}
                 placeholder='{"DB_HOST": "localhost", "DB_PASS": "secret"}'
-                rows={6}
-                className="font-mono text-sm"
+                rows={Math.max(6, Math.min(25, jsonInput.split("\n").length + 2))}
+                className="font-mono text-sm [field-sizing:fixed] [overflow-wrap:anywhere]"
               />
             ) : (
               <>

@@ -22,11 +22,13 @@ interface Folder {
 
 interface FolderSelectorProps {
   selectedFolderId: string | null;
+  selectedFolderName?: string | null;
   onSelect: (folderId: string, folderName: string) => void;
 }
 
 export function FolderSelector({
   selectedFolderId,
+  selectedFolderName,
   onSelect,
 }: FolderSelectorProps) {
   const [clouds, setClouds] = useState<Cloud[]>([]);
@@ -35,34 +37,53 @@ export function FolderSelector({
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetch("/api/clouds")
-      .then((r) => r.json())
-      .then((data) => {
+    let cancelled = false;
+    const load = async (retry = 0) => {
+      try {
+        const r = await fetch("/api/clouds");
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        if (cancelled) return;
         const list = data.clouds || [];
         setClouds(list);
         if (list.length === 1) {
           setSelectedCloudId(list[0].id);
         }
-      })
-      .catch(console.error);
+      } catch (e) {
+        if (cancelled) return;
+        if (retry < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          return load(retry + 1);
+        }
+        console.error("Failed to load clouds:", e);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
   }, []);
 
-  const loadFolders = useCallback((cloudId: string) => {
+  const loadFolders = useCallback(async (cloudId: string, retry = 0) => {
     setLoading(true);
-    fetch(`/api/folders?cloudId=${cloudId}`)
-      .then((r) => r.json())
-      .then((data) => {
-        const list: Folder[] = (data.folders || []).sort(
-          (a: Folder, b: Folder) => a.name.localeCompare(b.name)
-        );
-        setFolders(list);
-        // Auto-select first folder if none selected
-        if (!selectedFolderId && list.length > 0) {
-          onSelect(list[0].id, list[0].name);
-        }
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    try {
+      const r = await fetch(`/api/folders?cloudId=${cloudId}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      const list: Folder[] = (data.folders || []).sort(
+        (a: Folder, b: Folder) => a.name.localeCompare(b.name)
+      );
+      setFolders(list);
+      if (!selectedFolderId && list.length > 0) {
+        onSelect(list[0].id, list[0].name);
+      }
+    } catch (e) {
+      if (retry < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        return loadFolders(cloudId, retry + 1);
+      }
+      console.error("Failed to load folders:", e);
+    } finally {
+      setLoading(false);
+    }
   }, [selectedFolderId, onSelect]);
 
   useEffect(() => {
@@ -70,6 +91,10 @@ export function FolderSelector({
       loadFolders(selectedCloudId);
     }
   }, [selectedCloudId, loadFolders]);
+
+  // Show a fallback item while folders haven't loaded yet
+  const hasFolderInList = folders.some((f) => f.id === selectedFolderId);
+  const showFallback = !!selectedFolderId && !hasFolderInList && !!selectedFolderName;
 
   return (
     <div className="flex items-center gap-2">
@@ -93,7 +118,7 @@ export function FolderSelector({
           const folder = folders.find((f) => f.id === val);
           if (folder) onSelect(folder.id, folder.name);
         }}
-        disabled={loading || folders.length === 0}
+        disabled={loading || (folders.length === 0 && !showFallback)}
       >
         <SelectTrigger className="w-[200px]">
           <SelectValue
@@ -101,6 +126,11 @@ export function FolderSelector({
           />
         </SelectTrigger>
         <SelectContent>
+          {showFallback && (
+            <SelectItem value={selectedFolderId!}>
+              {selectedFolderName}
+            </SelectItem>
+          )}
           {folders.map((f) => (
             <SelectItem key={f.id} value={f.id}>
               {f.name}

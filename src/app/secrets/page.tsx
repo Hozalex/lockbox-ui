@@ -11,6 +11,7 @@ export default function SecretsPage() {
   const { authenticated, loading } = useAuth();
   const router = useRouter();
   const [folderId, setFolderId] = useState<string | null>(null);
+  const [folderName, setFolderName] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -21,14 +22,17 @@ export default function SecretsPage() {
   }, [loading, authenticated, router]);
 
   useEffect(() => {
-    const saved = localStorage.getItem("selectedFolderId");
-    if (saved) {
-      setFolderId(saved);
+    const savedId = localStorage.getItem("selectedFolderId");
+    const savedName = localStorage.getItem("selectedFolderName");
+    if (savedId) {
+      setFolderId(savedId);
+      setFolderName(savedName);
     }
   }, []);
 
   const handleFolderChange = (id: string, name: string) => {
     setFolderId(id);
+    setFolderName(name);
     localStorage.setItem("selectedFolderId", id);
     localStorage.setItem("selectedFolderName", name);
   };
@@ -45,7 +49,7 @@ export default function SecretsPage() {
 
   return (
     <div className="min-h-screen">
-      <Header folderId={folderId} onFolderChange={handleFolderChange} />
+      <Header folderId={folderId} folderName={folderName} onFolderChange={handleFolderChange} />
       <main className="container mx-auto px-4 py-6">
         {folderId ? (
           <>

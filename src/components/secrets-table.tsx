@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Table,
@@ -32,6 +33,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function SecretsTable({ folderId, onCreateClick }: SecretsTableProps) {
+  const router = useRouter();
   const [secrets, setSecrets] = useState<Secret[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,35 +45,47 @@ export function SecretsTable({ folderId, onCreateClick }: SecretsTableProps) {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const loadSecrets = useCallback(() => {
+  const loadSecrets = useCallback(async (retry = 0) => {
     setLoading(true);
     setError(null);
-    fetch(`/api/secrets?folderId=${folderId}`)
-      .then(async (r) => {
-        if (!r.ok) {
-          if (r.status === 403) {
-            throw new Error("Нет доступа к секретам в этом каталоге. Проверьте права IAM-токена.");
-          }
-          const body = await r.text().catch(() => "");
-          let msg = `HTTP ${r.status}`;
-          try {
-            const parsed = JSON.parse(body);
-            if (parsed.error) msg = parsed.error;
-          } catch {
-            // use default msg
-          }
-          throw new Error(msg);
+    try {
+      const r = await fetch(`/api/secrets?folderId=${folderId}`);
+      if (!r.ok) {
+        if (r.status === 401) {
+          router.push("/login");
+          return;
         }
-        return r.json();
-      })
-      .then((data) => {
-        const list: Secret[] = data.secrets || [];
-        list.sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
-        setSecrets(list);
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [folderId]);
+        if (r.status === 403) {
+          throw new Error("Нет доступа к секретам в этом каталоге. Проверьте права IAM-токена.");
+        }
+        const body = await r.text().catch(() => "");
+        let msg = `HTTP ${r.status}`;
+        try {
+          const parsed = JSON.parse(body);
+          if (parsed.error) msg = parsed.error;
+        } catch {
+          // use default msg
+        }
+        throw new Error(msg);
+      }
+      const data = await r.json();
+      const list: Secret[] = data.secrets || [];
+      list.sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
+      setSecrets(list);
+    } catch (e) {
+      const msg = (e as Error).message;
+      // Network-level errors ("fetch failed", "Failed to fetch") — auto-retry
+      if (retry < 2 && /fetch failed|failed to fetch|network/i.test(msg)) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        return loadSecrets(retry + 1);
+      }
+      setError(/fetch failed|failed to fetch/i.test(msg)
+        ? "Не удалось подключиться к API. Проверьте сетевое соединение."
+        : msg);
+    } finally {
+      setLoading(false);
+    }
+  }, [folderId, router]);
 
   useEffect(() => {
     loadSecrets();
@@ -85,7 +99,7 @@ export function SecretsTable({ folderId, onCreateClick }: SecretsTableProps) {
     return (
       <div className="py-8 text-center">
         <p className="text-destructive">Ошибка: {error}</p>
-        <Button variant="outline" size="sm" className="mt-2" onClick={loadSecrets}>
+        <Button variant="outline" size="sm" className="mt-2" onClick={() => loadSecrets()}>
           Повторить
         </Button>
       </div>
@@ -99,7 +113,7 @@ export function SecretsTable({ folderId, onCreateClick }: SecretsTableProps) {
           Секреты ({secrets.length})
         </h2>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={loadSecrets}>
+          <Button variant="outline" size="sm" onClick={() => loadSecrets()}>
             Обновить
           </Button>
           <Button size="sm" onClick={onCreateClick}>

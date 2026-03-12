@@ -67,35 +67,44 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showCloneDialog, setShowCloneDialog] = useState(false);
 
-  // Low-level loaders — throw on error (no try/catch), used by loadAll
-  const fetchSecret = useCallback(async () => {
-    const r = await fetch(`/api/secrets/${secretId}`);
+  // Helper: check response, throw AuthError on 401
+  const checkResponse = useCallback(async (r: Response) => {
+    if (r.status === 401) {
+      router.push("/login");
+      throw new Error("AUTH");
+    }
     if (!r.ok) {
       const body = await r.json().catch(() => ({}));
       throw new Error(body.error || `HTTP ${r.status}`);
     }
+  }, [router]);
+
+  // Low-level loaders — throw on error (no try/catch), used by loadAll
+  const fetchSecret = useCallback(async () => {
+    const r = await fetch(`/api/secrets/${secretId}`);
+    await checkResponse(r);
     const data = await r.json();
     if (!isValidSecret(data)) {
       throw new Error("Некорректный ответ API");
     }
     return data;
-  }, [secretId]);
+  }, [secretId, checkResponse]);
 
   const fetchPayload = useCallback(
     async (versionId?: string) => {
       const qs = versionId ? `?versionId=${versionId}` : "";
       const r = await fetch(`/api/secrets/${secretId}/payload${qs}`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      await checkResponse(r);
       return await r.json();
     },
-    [secretId]
+    [secretId, checkResponse]
   );
 
   const fetchVersions = useCallback(async () => {
     const r = await fetch(`/api/secrets/${secretId}/versions`);
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    await checkResponse(r);
     return await r.json();
-  }, [secretId]);
+  }, [secretId, checkResponse]);
 
   // Main loader: secret first, then payload + versions.
   // Retries up to 3 times for eventual consistency (new secrets).
@@ -143,6 +152,9 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
 
         setLoadError(null);
       } catch (e) {
+        const msg = (e as Error).message;
+        // Auth expired — already redirecting, don't retry
+        if (msg === "AUTH") return;
         console.error("loadAll error:", e);
         // Secret itself failed — retry for eventual consistency
         if (retry < 3) {
@@ -150,7 +162,7 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
           return loadAll(retry + 1);
         }
         setSecret(null);
-        setLoadError((e as Error).message || "Не удалось загрузить секрет");
+        setLoadError(msg || "Не удалось загрузить секрет");
       } finally {
         setLoading(false);
       }

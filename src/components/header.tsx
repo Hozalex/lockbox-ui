@@ -8,10 +8,11 @@ import { ThemeToggle } from "@/components/theme-toggle";
 
 interface HeaderProps {
   folderId: string | null;
+  folderName?: string | null;
   onFolderChange: (folderId: string, folderName: string) => void;
 }
 
-export function Header({ folderId, onFolderChange }: HeaderProps) {
+export function Header({ folderId, folderName, onFolderChange }: HeaderProps) {
   const { authenticated, logout } = useAuth();
   const router = useRouter();
 
@@ -28,6 +29,7 @@ export function Header({ folderId, onFolderChange }: HeaderProps) {
           {authenticated && (
             <FolderSelector
               selectedFolderId={folderId}
+              selectedFolderName={folderName}
               onSelect={onFolderChange}
             />
           )}
