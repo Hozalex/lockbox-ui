@@ -39,11 +39,11 @@ export function SecretsTable({ folderId, onCreateClick }: SecretsTableProps) {
   const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const copyId = (id: string) => {
+  const copyId = useCallback((id: string) => {
     navigator.clipboard.writeText(id);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
-  };
+  }, []);
 
   const loadSecrets = useCallback(async (retry = 0) => {
     setLoading(true);

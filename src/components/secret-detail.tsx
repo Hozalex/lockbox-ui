@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Table,
@@ -66,6 +66,19 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
   const [conflictDialog, setConflictDialog] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showCloneDialog, setShowCloneDialog] = useState(false);
+
+  // Memoize the JSON representation of entries to avoid recomputing it on every render
+  const entriesJson = useMemo(
+    () =>
+      JSON.stringify(
+        Object.fromEntries(
+          entries.map((e) => [e.key, e.textValue || e.binaryValue || ""])
+        ),
+        null,
+        2
+      ),
+    [entries]
+  );
 
   // Helper: check response, throw AuthError on 401
   const checkResponse = useCallback(async (r: Response) => {
@@ -491,14 +504,7 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
                 size="sm"
                 className="absolute right-3 top-3 z-10"
                 onClick={() => {
-                  const json = JSON.stringify(
-                    Object.fromEntries(
-                      entries.map((e) => [e.key, e.textValue || e.binaryValue || ""])
-                    ),
-                    null,
-                    2
-                  );
-                  navigator.clipboard.writeText(json);
+                  navigator.clipboard.writeText(entriesJson);
                   setJsonCopied(true);
                   setTimeout(() => setJsonCopied(false), 2000);
                 }}
@@ -506,13 +512,7 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
                 {jsonCopied ? "Скопировано!" : "Копировать"}
               </Button>
               <pre className="overflow-auto rounded-lg border bg-muted p-4 font-mono text-sm">
-                {JSON.stringify(
-                  Object.fromEntries(
-                    entries.map((e) => [e.key, e.textValue || e.binaryValue || ""])
-                  ),
-                  null,
-                  2
-                )}
+                {entriesJson}
               </pre>
             </div>
           ) : (
