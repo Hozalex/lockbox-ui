@@ -5,6 +5,7 @@ import {
 } from "@/lib/yc-api";
 import { log } from "@/lib/logger";
 import { apiErrorResponse } from "@/lib/api-error";
+import { validateYCResourceId } from "@/lib/validation";
 
 export async function POST(
   request: NextRequest,
@@ -13,6 +14,15 @@ export async function POST(
   }: { params: Promise<{ secretId: string; versionId: string }> }
 ) {
   const { secretId, versionId } = await params;
+
+  const secretIdError = validateYCResourceId(secretId, "secretId");
+  if (secretIdError) {
+    return NextResponse.json({ error: secretIdError }, { status: 400 });
+  }
+  const versionIdError = validateYCResourceId(versionId, "versionId");
+  if (versionIdError) {
+    return NextResponse.json({ error: versionIdError }, { status: 400 });
+  }
 
   try {
     const body = await request.json();
@@ -36,6 +46,15 @@ export async function DELETE(
   }: { params: Promise<{ secretId: string; versionId: string }> }
 ) {
   const { secretId, versionId } = await params;
+
+  const secretIdError = validateYCResourceId(secretId, "secretId");
+  if (secretIdError) {
+    return NextResponse.json({ error: secretIdError }, { status: 400 });
+  }
+  const versionIdError = validateYCResourceId(versionId, "versionId");
+  if (versionIdError) {
+    return NextResponse.json({ error: versionIdError }, { status: 400 });
+  }
 
   try {
     const data = await cancelVersionDestruction(secretId, versionId);

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSecret, updateSecret, deleteSecret } from "@/lib/yc-api";
 import { log } from "@/lib/logger";
 import { apiErrorResponse } from "@/lib/api-error";
+import { validateYCResourceId } from "@/lib/validation";
 import type { UpdateSecretRequest } from "@/lib/types";
 
 export async function GET(
@@ -9,6 +10,10 @@ export async function GET(
   { params }: { params: Promise<{ secretId: string }> }
 ) {
   const { secretId } = await params;
+  const idError = validateYCResourceId(secretId, "secretId");
+  if (idError) {
+    return NextResponse.json({ error: idError }, { status: 400 });
+  }
   try {
     const data = await getSecret(secretId);
     return NextResponse.json(data);
@@ -22,6 +27,10 @@ export async function PATCH(
   { params }: { params: Promise<{ secretId: string }> }
 ) {
   const { secretId } = await params;
+  const idError = validateYCResourceId(secretId, "secretId");
+  if (idError) {
+    return NextResponse.json({ error: idError }, { status: 400 });
+  }
   try {
     const body: UpdateSecretRequest = await request.json();
     const data = await updateSecret(secretId, body);
@@ -37,6 +46,10 @@ export async function DELETE(
   { params }: { params: Promise<{ secretId: string }> }
 ) {
   const { secretId } = await params;
+  const idError = validateYCResourceId(secretId, "secretId");
+  if (idError) {
+    return NextResponse.json({ error: idError }, { status: 400 });
+  }
   try {
     const data = await deleteSecret(secretId);
     log.info(`Secret deleted: ${secretId}`);

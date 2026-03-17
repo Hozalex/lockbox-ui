@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { listVersions, addVersion } from "@/lib/yc-api";
 import { log } from "@/lib/logger";
 import { apiErrorResponse } from "@/lib/api-error";
+import { validateYCResourceId } from "@/lib/validation";
 import type { AddVersionRequest } from "@/lib/types";
 
 export async function GET(
@@ -9,6 +10,11 @@ export async function GET(
   { params }: { params: Promise<{ secretId: string }> }
 ) {
   const { secretId } = await params;
+  const idError = validateYCResourceId(secretId, "secretId");
+  if (idError) {
+    return NextResponse.json({ error: idError }, { status: 400 });
+  }
+
   const pageToken =
     request.nextUrl.searchParams.get("pageToken") || undefined;
 
@@ -25,6 +31,10 @@ export async function POST(
   { params }: { params: Promise<{ secretId: string }> }
 ) {
   const { secretId } = await params;
+  const idError = validateYCResourceId(secretId, "secretId");
+  if (idError) {
+    return NextResponse.json({ error: idError }, { status: 400 });
+  }
   try {
     const body: AddVersionRequest = await request.json();
     const data = await addVersion(secretId, body);

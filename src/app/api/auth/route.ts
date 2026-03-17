@@ -7,6 +7,7 @@ import {
   IAM_EXPIRES_COOKIE,
   YC_IAM_ENDPOINT,
 } from "@/lib/auth";
+import { validateOAuthToken } from "@/lib/validation";
 
 const COOKIE_OPTS = {
   httpOnly: true,
@@ -48,12 +49,12 @@ async function exchangeOAuthForIAM(
 // POST /api/auth — save OAuth token, exchange for IAM
 export async function POST(request: NextRequest) {
   try {
-    const { token } = await request.json();
-    if (!token || typeof token !== "string") {
-      return NextResponse.json(
-        { error: "token is required" },
-        { status: 400 }
-      );
+    const body = await request.json();
+    const { token } = body;
+
+    const tokenError = validateOAuthToken(token);
+    if (tokenError) {
+      return NextResponse.json({ error: tokenError }, { status: 400 });
     }
 
     // Exchange OAuth → IAM
@@ -67,8 +68,8 @@ export async function POST(request: NextRequest) {
     );
 
     if (!testRes.ok) {
-      const body = await testRes.text();
-      const message = parseYCError(body);
+      const testBody = await testRes.text();
+      const message = parseYCError(testBody);
       log.error(`Token validation failed (${testRes.status}):`, message);
       return NextResponse.json(
         { error: `Не удалось проверить токен: ${message}` },
