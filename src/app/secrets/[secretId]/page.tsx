@@ -1,33 +1,20 @@
 "use client";
 
 import { useRouter, useParams } from "next/navigation";
-import { useState, useEffect } from "react";
-import { useAuth } from "@/components/session-provider";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { useFolderStorage } from "@/hooks/useFolderStorage";
 import { Header } from "@/components/header";
 import { SecretDetail } from "@/components/secret-detail";
 
 export default function SecretPage() {
-  const { authenticated, loading } = useAuth();
+  const { authenticated, loading } = useRequireAuth();
   const router = useRouter();
   const params = useParams();
   const secretId = params.secretId as string;
-  const [folderId, setFolderId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!loading && !authenticated) {
-      router.push("/login");
-    }
-  }, [loading, authenticated, router]);
-
-  useEffect(() => {
-    const saved = localStorage.getItem("selectedFolderId");
-    if (saved) setFolderId(saved);
-  }, []);
+  const { folderId, setFolder } = useFolderStorage();
 
   const handleFolderChange = (id: string, name: string) => {
-    setFolderId(id);
-    localStorage.setItem("selectedFolderId", id);
-    localStorage.setItem("selectedFolderName", name);
+    setFolder(id, name);
     router.push("/secrets");
   };
 

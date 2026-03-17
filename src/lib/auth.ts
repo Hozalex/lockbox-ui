@@ -1,10 +1,10 @@
 import { cookies } from "next/headers";
 import { log } from "@/lib/logger";
 
-const OAUTH_COOKIE = "oauth_token";
-const IAM_COOKIE = "iam_token";
-const IAM_EXPIRES_COOKIE = "iam_expires_at";
-const YC_IAM_ENDPOINT = "https://iam.api.yandexcloud.kz/iam/v1/tokens";
+export const OAUTH_COOKIE = "oauth_token";
+export const IAM_COOKIE = "iam_token";
+export const IAM_EXPIRES_COOKIE = "iam_expires_at";
+export const YC_IAM_ENDPOINT = "https://iam.api.yandexcloud.kz/iam/v1/tokens";
 
 // Buffer: refresh IAM token 5 minutes before expiry
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;

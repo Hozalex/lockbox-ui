@@ -4,6 +4,7 @@ import {
   cancelVersionDestruction,
 } from "@/lib/yc-api";
 import { log } from "@/lib/logger";
+import { apiErrorResponse } from "@/lib/api-error";
 
 export async function POST(
   request: NextRequest,
@@ -24,12 +25,7 @@ export async function POST(
     log.info(`Version ${versionId} of secret ${secretId} scheduled for destruction`);
     return NextResponse.json(data);
   } catch (e) {
-    const err = e as { status?: number; message?: string };
-    log.error(`POST /api/secrets/${secretId}/versions/${versionId}/destroy:`, err.message);
-    return NextResponse.json(
-      { error: err.message },
-      { status: err.status || 500 }
-    );
+    return apiErrorResponse(e, `POST /api/secrets/${secretId}/versions/${versionId}/destroy`);
   }
 }
 
@@ -46,11 +42,6 @@ export async function DELETE(
     log.info(`Version ${versionId} of secret ${secretId} destruction cancelled`);
     return NextResponse.json(data);
   } catch (e) {
-    const err = e as { status?: number; message?: string };
-    log.error(`DELETE /api/secrets/${secretId}/versions/${versionId}/destroy:`, err.message);
-    return NextResponse.json(
-      { error: err.message },
-      { status: err.status || 500 }
-    );
+    return apiErrorResponse(e, `DELETE /api/secrets/${secretId}/versions/${versionId}/destroy`);
   }
 }

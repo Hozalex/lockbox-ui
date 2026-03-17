@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSecret, updateSecret, deleteSecret } from "@/lib/yc-api";
 import { log } from "@/lib/logger";
+import { apiErrorResponse } from "@/lib/api-error";
 import type { UpdateSecretRequest } from "@/lib/types";
 
 export async function GET(
@@ -12,12 +13,7 @@ export async function GET(
     const data = await getSecret(secretId);
     return NextResponse.json(data);
   } catch (e) {
-    const err = e as { status?: number; message?: string };
-    log.error(`GET /api/secrets/${secretId}:`, err.message);
-    return NextResponse.json(
-      { error: err.message },
-      { status: err.status || 500 }
-    );
+    return apiErrorResponse(e, `GET /api/secrets/${secretId}`);
   }
 }
 
@@ -32,12 +28,7 @@ export async function PATCH(
     log.info(`Secret updated: ${secretId}`);
     return NextResponse.json(data);
   } catch (e) {
-    const err = e as { status?: number; message?: string };
-    log.error(`PATCH /api/secrets/${secretId}:`, err.message);
-    return NextResponse.json(
-      { error: err.message },
-      { status: err.status || 500 }
-    );
+    return apiErrorResponse(e, `PATCH /api/secrets/${secretId}`);
   }
 }
 
@@ -51,11 +42,6 @@ export async function DELETE(
     log.info(`Secret deleted: ${secretId}`);
     return NextResponse.json(data);
   } catch (e) {
-    const err = e as { status?: number; message?: string };
-    log.error(`DELETE /api/secrets/${secretId}:`, err.message);
-    return NextResponse.json(
-      { error: err.message },
-      { status: err.status || 500 }
-    );
+    return apiErrorResponse(e, `DELETE /api/secrets/${secretId}`);
   }
 }

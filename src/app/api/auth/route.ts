@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { log } from "@/lib/logger";
-
-const OAUTH_COOKIE = "oauth_token";
-const IAM_COOKIE = "iam_token";
-const IAM_EXPIRES_COOKIE = "iam_expires_at";
-const YC_IAM_ENDPOINT = "https://iam.api.yandexcloud.kz/iam/v1/tokens";
+import {
+  OAUTH_COOKIE,
+  IAM_COOKIE,
+  IAM_EXPIRES_COOKIE,
+  YC_IAM_ENDPOINT,
+} from "@/lib/auth";
 
 const COOKIE_OPTS = {
   httpOnly: true,

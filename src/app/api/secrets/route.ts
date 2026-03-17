@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listSecrets, createSecret } from "@/lib/yc-api";
 import { log } from "@/lib/logger";
+import { apiErrorResponse } from "@/lib/api-error";
 import type { CreateSecretRequest } from "@/lib/types";
 
 export async function GET(request: NextRequest) {
@@ -19,12 +20,7 @@ export async function GET(request: NextRequest) {
     const data = await listSecrets(folderId, 100, pageToken);
     return NextResponse.json(data);
   } catch (e) {
-    const err = e as { status?: number; message?: string };
-    log.error(`GET /api/secrets (folderId=${folderId}):`, err.message);
-    return NextResponse.json(
-      { error: err.message },
-      { status: err.status || 500 }
-    );
+    return apiErrorResponse(e, `GET /api/secrets (folderId=${folderId})`);
   }
 }
 
@@ -41,11 +37,6 @@ export async function POST(request: NextRequest) {
     log.info(`Secret created: ${body.name} in folder ${body.folderId}`);
     return NextResponse.json(data);
   } catch (e) {
-    const err = e as { status?: number; message?: string };
-    log.error("POST /api/secrets:", err.message);
-    return NextResponse.json(
-      { error: err.message },
-      { status: err.status || 500 }
-    );
+    return apiErrorResponse(e, "POST /api/secrets");
   }
 }
