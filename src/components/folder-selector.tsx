@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Select,
   SelectContent,
@@ -93,7 +93,10 @@ export function FolderSelector({
   }, [selectedCloudId, loadFolders]);
 
   // Show a fallback item while folders haven't loaded yet
-  const hasFolderInList = folders.some((f) => f.id === selectedFolderId);
+  const hasFolderInList = useMemo(
+    () => folders.some((f) => f.id === selectedFolderId),
+    [folders, selectedFolderId]
+  );
   const showFallback = !!selectedFolderId && !hasFolderInList && !!selectedFolderName;
 
   return (

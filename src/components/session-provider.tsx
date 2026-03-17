@@ -6,6 +6,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   type ReactNode,
 } from "react";
 
@@ -49,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refresh();
   }, [refresh]);
 
-  const login = async (token: string) => {
+  const login = useCallback(async (token: string) => {
     try {
       const res = await fetch("/api/auth", {
         method: "POST",
@@ -65,17 +66,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       return { ok: false, error: (e as Error).message };
     }
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     await fetch("/api/auth", { method: "DELETE" });
     setAuthenticated(false);
-  };
+  }, []);
+
+  const contextValue = useMemo(
+    () => ({ authenticated, loading, login, logout, refresh }),
+    [authenticated, loading, login, logout, refresh]
+  );
 
   return (
-    <AuthContext.Provider
-      value={{ authenticated, loading, login, logout, refresh }}
-    >
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );
