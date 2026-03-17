@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { PayloadEntry } from "@/lib/types";
+import { validateKeys } from "@/lib/validation";
 
 interface KeyValue {
   key: string;
@@ -64,8 +65,6 @@ export function VersionCreateDialog({
     }
   }, [open, currentEntries]);
 
-  const KEY_REGEX = /^[a-zA-Z0-9_.\-]+$/;
-
   const addEntry = () =>
     setEntries([...entries, { key: "", value: "", isNew: true }]);
 
@@ -80,15 +79,6 @@ export function VersionCreateDialog({
     setEntries(
       entries.map((e, idx) => (idx === i ? { ...e, [field]: val } : e))
     );
-
-  const validateKeys = (keys: string[]): string | null => {
-    for (const k of keys) {
-      if (!KEY_REGEX.test(k)) {
-        return `Невалидный ключ «${k}»: допустимы только латиница, цифры, _, -, .`;
-      }
-    }
-    return null;
-  };
 
   const handleSubmit = async () => {
     setError(null);

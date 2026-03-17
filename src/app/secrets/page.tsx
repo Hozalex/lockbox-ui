@@ -1,40 +1,20 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
-import { useAuth } from "@/components/session-provider";
+import { useState } from "react";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
+import { useFolderStorage } from "@/hooks/useFolderStorage";
 import { Header } from "@/components/header";
 import { SecretsTable } from "@/components/secrets-table";
 import { SecretCreateDialog } from "@/components/secret-create-dialog";
 
 export default function SecretsPage() {
-  const { authenticated, loading } = useAuth();
-  const router = useRouter();
-  const [folderId, setFolderId] = useState<string | null>(null);
-  const [folderName, setFolderName] = useState<string | null>(null);
+  const { authenticated, loading } = useRequireAuth();
+  const { folderId, folderName, setFolder } = useFolderStorage();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  useEffect(() => {
-    if (!loading && !authenticated) {
-      router.push("/login");
-    }
-  }, [loading, authenticated, router]);
-
-  useEffect(() => {
-    const savedId = localStorage.getItem("selectedFolderId");
-    const savedName = localStorage.getItem("selectedFolderName");
-    if (savedId) {
-      setFolderId(savedId);
-      setFolderName(savedName);
-    }
-  }, []);
-
   const handleFolderChange = (id: string, name: string) => {
-    setFolderId(id);
-    setFolderName(name);
-    localStorage.setItem("selectedFolderId", id);
-    localStorage.setItem("selectedFolderName", name);
+    setFolder(id, name);
   };
 
   if (loading) {

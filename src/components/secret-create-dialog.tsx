@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { FolderSelector } from "@/components/folder-selector";
 import type { CloneSecretData } from "@/lib/types";
+import { NAME_REGEX, validateKeys } from "@/lib/validation";
 
 interface KeyValue {
   key: string;
@@ -152,9 +153,6 @@ export function SecretCreateDialog({
     }
   }, [open, targetFolderId]);
 
-  const NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
-  const KEY_REGEX = /^[a-zA-Z0-9_.\-]+$/;
-
   const addEntry = () => setEntries([...entries, { key: "", value: "" }]);
   const removeEntry = (i: number) =>
     setEntries(entries.filter((_, idx) => idx !== i));
@@ -166,15 +164,6 @@ export function SecretCreateDialog({
     setLabels(labels.filter((_, idx) => idx !== i));
   const updateLabel = (i: number, field: "key" | "value", val: string) =>
     setLabels(labels.map((l, idx) => (idx === i ? { ...l, [field]: val } : l)));
-
-  const validateKeys = (keys: string[]): string | null => {
-    for (const k of keys) {
-      if (!KEY_REGEX.test(k)) {
-        return `Невалидный ключ «${k}»: допустимы только латиница, цифры, _, -, .`;
-      }
-    }
-    return null;
-  };
 
   const handleSubmit = async () => {
     setError(null);

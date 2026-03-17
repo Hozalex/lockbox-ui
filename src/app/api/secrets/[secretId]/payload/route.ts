@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPayload } from "@/lib/yc-api";
-import { log } from "@/lib/logger";
+import { apiErrorResponse } from "@/lib/api-error";
 
 export async function GET(
   request: NextRequest,
@@ -14,11 +14,6 @@ export async function GET(
     const data = await getPayload(secretId, versionId);
     return NextResponse.json(data);
   } catch (e) {
-    const err = e as { status?: number; message?: string };
-    log.error(`GET /api/secrets/${secretId}/payload:`, err.message);
-    return NextResponse.json(
-      { error: err.message },
-      { status: err.status || 500 }
-    );
+    return apiErrorResponse(e, `GET /api/secrets/${secretId}/payload`);
   }
 }

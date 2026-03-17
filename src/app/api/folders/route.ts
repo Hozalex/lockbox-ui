@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listFolders } from "@/lib/yc-api";
-import { log } from "@/lib/logger";
+import { apiErrorResponse } from "@/lib/api-error";
 
 export async function GET(request: NextRequest) {
   const cloudId = request.nextUrl.searchParams.get("cloudId");
@@ -15,11 +15,6 @@ export async function GET(request: NextRequest) {
     const data = await listFolders(cloudId);
     return NextResponse.json(data);
   } catch (e) {
-    const err = e as { status?: number; message?: string };
-    log.error(`GET /api/folders (cloudId=${cloudId}):`, err.message);
-    return NextResponse.json(
-      { error: err.message },
-      { status: err.status || 500 }
-    );
+    return apiErrorResponse(e, `GET /api/folders (cloudId=${cloudId})`);
   }
 }
