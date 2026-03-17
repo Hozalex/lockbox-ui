@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listKmsKeys } from "@/lib/yc-api";
 import { log } from "@/lib/logger";
+import { validateYCResourceId } from "@/lib/validation";
 
 export async function GET(request: NextRequest) {
   const folderId = request.nextUrl.searchParams.get("folderId");
@@ -9,6 +10,11 @@ export async function GET(request: NextRequest) {
       { error: "folderId is required" },
       { status: 400 }
     );
+  }
+
+  const folderIdError = validateYCResourceId(folderId, "folderId");
+  if (folderIdError) {
+    return NextResponse.json({ error: folderIdError }, { status: 400 });
   }
 
   try {

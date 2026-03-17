@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { listSecrets, createSecret } from "@/lib/yc-api";
 import { log } from "@/lib/logger";
 import { apiErrorResponse } from "@/lib/api-error";
+import { validateYCResourceId, validateSecretName } from "@/lib/validation";
 import type { CreateSecretRequest } from "@/lib/types";
 
 export async function GET(request: NextRequest) {
@@ -11,6 +12,11 @@ export async function GET(request: NextRequest) {
       { error: "folderId is required" },
       { status: 400 }
     );
+  }
+
+  const folderIdError = validateYCResourceId(folderId, "folderId");
+  if (folderIdError) {
+    return NextResponse.json({ error: folderIdError }, { status: 400 });
   }
 
   const pageToken =
@@ -33,6 +39,17 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const folderIdError = validateYCResourceId(body.folderId, "folderId");
+    if (folderIdError) {
+      return NextResponse.json({ error: folderIdError }, { status: 400 });
+    }
+
+    const nameError = validateSecretName(body.name);
+    if (nameError) {
+      return NextResponse.json({ error: nameError }, { status: 400 });
+    }
+
     const data = await createSecret(body);
     log.info(`Secret created: ${body.name} in folder ${body.folderId}`);
     return NextResponse.json(data);
