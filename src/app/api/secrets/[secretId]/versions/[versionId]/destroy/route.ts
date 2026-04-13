@@ -6,6 +6,7 @@ import {
 import { log } from "@/lib/logger";
 import { apiErrorResponse } from "@/lib/api-error";
 import { validateYCResourceId } from "@/lib/validation";
+import { requireSecretAccess } from "@/lib/api-rbac";
 
 export async function POST(
   request: NextRequest,
@@ -23,6 +24,10 @@ export async function POST(
   if (versionIdError) {
     return NextResponse.json({ error: versionIdError }, { status: 400 });
   }
+
+  // RBAC: require rw to destroy version
+  const denied = await requireSecretAccess(secretId, "rw");
+  if (denied) return denied;
 
   try {
     const body = await request.json();
@@ -55,6 +60,10 @@ export async function DELETE(
   if (versionIdError) {
     return NextResponse.json({ error: versionIdError }, { status: 400 });
   }
+
+  // RBAC: require rw to cancel destruction
+  const denied = await requireSecretAccess(secretId, "rw");
+  if (denied) return denied;
 
   try {
     const data = await cancelVersionDestruction(secretId, versionId);

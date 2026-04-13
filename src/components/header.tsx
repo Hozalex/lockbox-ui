@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/session-provider";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { FolderSelector } from "@/components/folder-selector";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -13,12 +14,14 @@ interface HeaderProps {
 }
 
 export function Header({ folderId, folderName, onFolderChange }: HeaderProps) {
-  const { authenticated, logout } = useAuth();
+  const { authenticated, authMode, logout } = useAuth();
   const router = useRouter();
 
   const handleLogout = async () => {
     await logout();
-    router.push("/login");
+    if (authMode !== "keycloak") {
+      router.push("/login");
+    }
   };
 
   return (
@@ -35,6 +38,11 @@ export function Header({ folderId, folderName, onFolderChange }: HeaderProps) {
           )}
         </div>
         <div className="flex items-center gap-2">
+          {authenticated && authMode && (
+            <Badge variant="outline" className="text-xs">
+              {authMode === "keycloak" ? "Keycloak" : "OAuth"}
+            </Badge>
+          )}
           <ThemeToggle />
           {authenticated && (
             <Button variant="outline" size="sm" onClick={handleLogout}>

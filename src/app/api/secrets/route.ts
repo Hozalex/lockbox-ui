@@ -3,6 +3,7 @@ import { listSecrets, createSecret } from "@/lib/yc-api";
 import { log } from "@/lib/logger";
 import { apiErrorResponse } from "@/lib/api-error";
 import { validateYCResourceId, validateSecretName } from "@/lib/validation";
+import { requireFolderAccess } from "@/lib/api-rbac";
 import type { CreateSecretRequest } from "@/lib/types";
 
 export async function GET(request: NextRequest) {
@@ -18,6 +19,10 @@ export async function GET(request: NextRequest) {
   if (folderIdError) {
     return NextResponse.json({ error: folderIdError }, { status: 400 });
   }
+
+  // RBAC: require at least ro access
+  const denied = await requireFolderAccess(folderId, "ro");
+  if (denied) return denied;
 
   const pageToken =
     request.nextUrl.searchParams.get("pageToken") || undefined;
@@ -49,6 +54,10 @@ export async function POST(request: NextRequest) {
     if (nameError) {
       return NextResponse.json({ error: nameError }, { status: 400 });
     }
+
+    // RBAC: require rw access to create
+    const denied = await requireFolderAccess(body.folderId, "rw");
+    if (denied) return denied;
 
     const data = await createSecret(body);
     log.info(`Secret created: ${body.name} in folder ${body.folderId}`);

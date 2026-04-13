@@ -46,7 +46,7 @@ async function exchangeOAuthForIAM(
   return { iamToken: data.iamToken, expiresAt: data.expiresAt };
 }
 
-// POST /api/auth — save OAuth token, exchange for IAM
+// POST /api/auth/oauth — save OAuth token, exchange for IAM
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE /api/auth — clear all tokens (logout)
+// DELETE /api/auth/oauth — clear all tokens (logout)
 export async function DELETE() {
   log.info("Logout");
   const response = NextResponse.json({ ok: true });
@@ -119,7 +119,7 @@ export async function DELETE() {
   return response;
 }
 
-// GET /api/auth — check if authenticated
+// GET /api/auth/oauth — check if authenticated
 export async function GET() {
   const cookieStore = await cookies();
   const oauthToken = cookieStore.get(OAUTH_COOKIE)?.value;

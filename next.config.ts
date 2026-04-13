@@ -2,6 +2,15 @@ import type { NextConfig } from "next";
 
 const isDev = process.env.NODE_ENV !== "production";
 
+const keycloakIssuer = process.env.KEYCLOAK_ISSUER || "";
+// Extract origin from issuer URL for CSP (e.g. "https://keycloak.example.com")
+const keycloakOrigin = keycloakIssuer
+  ? new URL(keycloakIssuer).origin
+  : "";
+
+const connectSources = ["'self'", "https://oauth.yandex.ru"];
+if (keycloakOrigin) connectSources.push(keycloakOrigin);
+
 const cspDirectives = [
   "default-src 'self'",
   // unsafe-eval is only needed in development (webpack hot reload)
@@ -11,7 +20,7 @@ const cspDirectives = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data:",
   "font-src 'self'",
-  "connect-src 'self' https://oauth.yandex.ru",
+  `connect-src ${connectSources.join(" ")}`,
   "frame-ancestors 'none'",
 ];
 

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/session-provider";
 
 export function useRequireAuth() {
-  const { authenticated, loading } = useAuth();
+  const { authenticated, loading, authMode, roles } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -14,5 +14,5 @@ export function useRequireAuth() {
     }
   }, [loading, authenticated, router]);
 
-  return { authenticated, loading };
+  return { authenticated, loading, authMode, roles };
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { listKmsKeys } from "@/lib/yc-api";
 import { log } from "@/lib/logger";
 import { validateYCResourceId } from "@/lib/validation";
+import { requireFolderAccess } from "@/lib/api-rbac";
 
 export async function GET(request: NextRequest) {
   const folderId = request.nextUrl.searchParams.get("folderId");
@@ -16,6 +17,10 @@ export async function GET(request: NextRequest) {
   if (folderIdError) {
     return NextResponse.json({ error: folderIdError }, { status: 400 });
   }
+
+  // RBAC: require at least ro to list KMS keys
+  const denied = await requireFolderAccess(folderId, "ro");
+  if (denied) return denied;
 
   try {
     const data = await listKmsKeys(folderId);

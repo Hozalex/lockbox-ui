@@ -47,9 +47,10 @@ function isValidSecret(data: unknown): data is Secret {
 
 interface SecretDetailProps {
   secretId: string;
+  canWrite?: boolean;
 }
 
-export function SecretDetail({ secretId }: SecretDetailProps) {
+export function SecretDetail({ secretId, canWrite = true }: SecretDetailProps) {
   const router = useRouter();
   const [secret, setSecret] = useState<Secret | null>(null);
   const [entries, setEntries] = useState<PayloadEntry[]>([]);
@@ -369,30 +370,36 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
           )}
         </div>
         <div className="flex gap-2">
-          <Button
-            size="sm"
-            onClick={() => setShowVersionDialog(true)}
-          >
-            Новая версия
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowCloneDialog(true)}
-          >
-            Клонировать
-          </Button>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => {
-              setDeleteConfirmText("");
-              setShowDeleteDialog(true);
-            }}
-            disabled={deleting || secret.deletionProtection}
-          >
-            {deleting ? "Удаление..." : "Удалить"}
-          </Button>
+          {canWrite && (
+            <Button
+              size="sm"
+              onClick={() => setShowVersionDialog(true)}
+            >
+              Новая версия
+            </Button>
+          )}
+          {canWrite && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowCloneDialog(true)}
+            >
+              Клонировать
+            </Button>
+          )}
+          {canWrite && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                setDeleteConfirmText("");
+                setShowDeleteDialog(true);
+              }}
+              disabled={deleting || secret.deletionProtection}
+            >
+              {deleting ? "Удаление..." : "Удалить"}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -592,42 +599,44 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
                   </TableCell>
                   <TableCell>{v.payloadEntryKeys?.length || 0}</TableCell>
                   <TableCell>
-                    <div className="flex gap-1 flex-wrap">
-                      {v.status === "ACTIVE" &&
-                        v.id !== secret.currentVersion?.id && (
-                          <>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-xs"
-                              disabled={rollingBack === v.id}
-                              onClick={() => handleRollback(v.id)}
-                            >
-                              {rollingBack === v.id ? "Откат..." : "Сделать текущей"}
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-xs"
-                              onClick={() =>
-                                handleScheduleDestruction(v.id, "604800s")
-                              }
-                            >
-                              Удалить через 7д
-                            </Button>
-                          </>
+                    {canWrite && (
+                      <div className="flex gap-1 flex-wrap">
+                        {v.status === "ACTIVE" &&
+                          v.id !== secret.currentVersion?.id && (
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-xs"
+                                disabled={rollingBack === v.id}
+                                onClick={() => handleRollback(v.id)}
+                              >
+                                {rollingBack === v.id ? "Откат..." : "Сделать текущей"}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-xs"
+                                onClick={() =>
+                                  handleScheduleDestruction(v.id, "604800s")
+                                }
+                              >
+                                Удалить через 7д
+                              </Button>
+                            </>
+                          )}
+                        {v.status === "SCHEDULED_FOR_DESTRUCTION" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs"
+                            onClick={() => handleCancelDestruction(v.id)}
+                          >
+                            Отменить удаление
+                          </Button>
                         )}
-                      {v.status === "SCHEDULED_FOR_DESTRUCTION" && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-xs"
-                          onClick={() => handleCancelDestruction(v.id)}
-                        >
-                          Отменить удаление
-                        </Button>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

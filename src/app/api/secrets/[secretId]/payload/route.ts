@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPayload } from "@/lib/yc-api";
 import { apiErrorResponse } from "@/lib/api-error";
 import { validateYCResourceId } from "@/lib/validation";
+import { requireSecretAccess } from "@/lib/api-rbac";
 
 export async function GET(
   request: NextRequest,
@@ -12,6 +13,10 @@ export async function GET(
   if (idError) {
     return NextResponse.json({ error: idError }, { status: 400 });
   }
+
+  // RBAC: require at least ro to read payload
+  const denied = await requireSecretAccess(secretId, "ro");
+  if (denied) return denied;
 
   const versionId =
     request.nextUrl.searchParams.get("versionId") || undefined;

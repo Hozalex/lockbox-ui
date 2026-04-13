@@ -23,6 +23,7 @@ import type { Secret, SecretVersion } from "@/lib/types";
 
 interface SecretsTableProps {
   folderId: string;
+  canWrite?: boolean;
   onCreateClick: () => void;
 }
 
@@ -32,7 +33,7 @@ const STATUS_COLORS: Record<string, string> = {
   CREATING: "bg-yellow-100 text-yellow-800",
 };
 
-export function SecretsTable({ folderId, onCreateClick }: SecretsTableProps) {
+export function SecretsTable({ folderId, canWrite = true, onCreateClick }: SecretsTableProps) {
   const router = useRouter();
   const [secrets, setSecrets] = useState<Secret[]>([]);
   const [loading, setLoading] = useState(true);
@@ -144,9 +145,11 @@ export function SecretsTable({ folderId, onCreateClick }: SecretsTableProps) {
           <Button variant="outline" size="sm" onClick={() => loadSecrets()}>
             Обновить
           </Button>
-          <Button size="sm" onClick={onCreateClick}>
-            Создать секрет
-          </Button>
+          {canWrite && (
+            <Button size="sm" onClick={onCreateClick}>
+              Создать секрет
+            </Button>
+          )}
         </div>
       </div>
 
