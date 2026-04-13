@@ -19,7 +19,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Copy, Check } from "lucide-react";
-import type { Secret } from "@/lib/types";
+import type { Secret, SecretVersion } from "@/lib/types";
 
 interface SecretsTableProps {
   folderId: string;
@@ -38,6 +38,31 @@ export function SecretsTable({ folderId, onCreateClick }: SecretsTableProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [versionCounts, setVersionCounts] = useState<Record<string, number | null>>({});
+
+  const loadVersionCounts = useCallback(async (secretList: Secret[]) => {
+    const counts: Record<string, number | null> = {};
+    secretList.forEach((s) => (counts[s.id] = null));
+    setVersionCounts(counts);
+
+    await Promise.all(
+      secretList.map(async (secret) => {
+        try {
+          const r = await fetch(`/api/secrets/${secret.id}/versions`);
+          if (!r.ok) {
+            setVersionCounts((prev) => ({ ...prev, [secret.id]: -1 }));
+            return;
+          }
+          const data = await r.json();
+          const versions: SecretVersion[] = data.versions || [];
+          const activeCount = versions.filter((v) => v.status === "ACTIVE").length;
+          setVersionCounts((prev) => ({ ...prev, [secret.id]: activeCount }));
+        } catch {
+          setVersionCounts((prev) => ({ ...prev, [secret.id]: -1 }));
+        }
+      })
+    );
+  }, []);
 
   const copyId = useCallback((id: string) => {
     navigator.clipboard.writeText(id);
@@ -72,6 +97,9 @@ export function SecretsTable({ folderId, onCreateClick }: SecretsTableProps) {
       const list: Secret[] = data.secrets || [];
       list.sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
       setSecrets(list);
+      if (list.length > 0) {
+        loadVersionCounts(list);
+      }
     } catch (e) {
       const msg = (e as Error).message;
       // Network-level errors ("fetch failed", "Failed to fetch") — auto-retry
@@ -85,7 +113,7 @@ export function SecretsTable({ folderId, onCreateClick }: SecretsTableProps) {
     } finally {
       setLoading(false);
     }
-  }, [folderId, router]);
+  }, [folderId, router, loadVersionCounts]);
 
   useEffect(() => {
     loadSecrets();
@@ -133,6 +161,7 @@ export function SecretsTable({ folderId, onCreateClick }: SecretsTableProps) {
               <TableHead>Имя</TableHead>
               <TableHead>ID</TableHead>
               <TableHead>Статус</TableHead>
+              <TableHead>Версий</TableHead>
               <TableHead>Ключей</TableHead>
               <TableHead>Создан</TableHead>
               <TableHead>Метки</TableHead>
@@ -187,6 +216,13 @@ export function SecretsTable({ folderId, onCreateClick }: SecretsTableProps) {
                   >
                     {secret.status}
                   </Badge>
+                </TableCell>
+                <TableCell className="text-sm text-muted-foreground">
+                  {versionCounts[secret.id] === null
+                    ? "…"
+                    : versionCounts[secret.id] === -1
+                      ? "—"
+                      : versionCounts[secret.id]}
                 </TableCell>
                 <TableCell>
                   {secret.currentVersion?.payloadEntryKeys?.length || 0}
