@@ -19,6 +19,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Copy, Check } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { Secret, SecretVersion } from "@/lib/types";
 
 interface SecretsTableProps {
@@ -121,7 +122,37 @@ export function SecretsTable({ folderId, canWrite = true, onCreateClick }: Secre
   }, [loadSecrets]);
 
   if (loading) {
-    return <div className="py-8 text-center text-muted-foreground">Загрузка секретов...</div>;
+    return (
+      <div>
+        <div className="mb-4 flex items-center justify-between">
+          <Skeleton className="h-7 w-36" />
+          <div className="flex gap-2">
+            <Skeleton className="h-8 w-20" />
+            {canWrite && <Skeleton className="h-8 w-28" />}
+          </div>
+        </div>
+        <div className="rounded-lg border">
+          <div className="border-b px-4 py-3 flex gap-6">
+            {[140, 130, 70, 60, 70, 60, 100].map((w, i) => (
+              <Skeleton key={i} className="h-4" style={{ width: w }} />
+            ))}
+          </div>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="border-b last:border-0 px-4 py-3 flex gap-6 items-center">
+              <Skeleton className="h-4 w-[140px]" />
+              <Skeleton className="h-4 w-[130px]" />
+              <Skeleton className="h-5 w-[70px] rounded-full" />
+              <Skeleton className="h-4 w-[60px]" />
+              <Skeleton className="h-4 w-[70px]" />
+              <Skeleton className="h-4 w-[60px]" />
+              <div className="flex gap-1">
+                <Skeleton className="h-5 w-[100px] rounded-full" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   if (error) {

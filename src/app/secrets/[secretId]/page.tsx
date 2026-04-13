@@ -6,6 +6,7 @@ import { useFolderStorage } from "@/hooks/useFolderStorage";
 import { useCanWrite } from "@/hooks/useFolderAccess";
 import { Header } from "@/components/header";
 import { SecretDetail } from "@/components/secret-detail";
+import { PageLoader } from "@/components/page-loader";
 
 export default function SecretPage() {
   const { authenticated, loading } = useRequireAuth();
@@ -20,15 +21,9 @@ export default function SecretPage() {
     router.push("/secrets");
   };
 
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center text-muted-foreground">
-        Загрузка...
-      </div>
-    );
+  if (loading || !authenticated) {
+    return <PageLoader />;
   }
-
-  if (!authenticated) return null;
 
   return (
     <div className="min-h-screen">

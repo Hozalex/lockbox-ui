@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { auth } from "@/auth";
-import { getSecret, listFolders, listClouds } from "@/lib/yc-api";
+import { getSecret, listFolders, listClouds, getFolder } from "@/lib/yc-api";
 import { isAdmin, parseFolderPermissions } from "@/lib/rbac";
 import type { FolderAccess } from "@/lib/rbac";
 
@@ -57,11 +57,34 @@ async function refreshFolderCache(): Promise<void> {
 }
 
 /**
- * Get folder name by ID, using cache.
+ * Get folder name by ID.
+ * First checks cache, then attempts a bulk refresh, then falls back to direct
+ * per-folder GET (works even when the SA lacks cloud-level listing permissions).
  */
 export async function getFolderName(folderId: string): Promise<string | null> {
+  // Fast path: in-cache
+  if (folderNameCache.has(folderId) && Date.now() < folderCacheExpiry) {
+    return folderNameCache.get(folderId) ?? null;
+  }
+
+  // Try bulk refresh (populates cache from listClouds+listFolders)
   await refreshFolderCache();
-  return folderNameCache.get(folderId) ?? null;
+  if (folderNameCache.has(folderId)) {
+    return folderNameCache.get(folderId) ?? null;
+  }
+
+  // Fallback: direct GET /folders/{id} — works with only folder-level SA permissions
+  try {
+    const folder = await getFolder(folderId);
+    if (folder?.name) {
+      folderNameCache.set(folderId, folder.name);
+      return folder.name;
+    }
+  } catch {
+    // ignore — will return null below
+  }
+
+  return null;
 }
 
 /**

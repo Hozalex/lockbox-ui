@@ -7,6 +7,7 @@ import { useCanWrite } from "@/hooks/useFolderAccess";
 import { Header } from "@/components/header";
 import { SecretsTable } from "@/components/secrets-table";
 import { SecretCreateDialog } from "@/components/secret-create-dialog";
+import { PageLoader } from "@/components/page-loader";
 
 export default function SecretsPage() {
   const { authenticated, loading } = useRequireAuth();
@@ -19,15 +20,9 @@ export default function SecretsPage() {
     setFolder(id, name);
   };
 
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center text-muted-foreground">
-        Загрузка...
-      </div>
-    );
+  if (loading || !authenticated) {
+    return <PageLoader />;
   }
-
-  if (!authenticated) return null;
 
   return (
     <div className="min-h-screen">

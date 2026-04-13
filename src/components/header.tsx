@@ -34,6 +34,7 @@ export function Header({ folderId, folderName, onFolderChange }: HeaderProps) {
               selectedFolderId={folderId}
               selectedFolderName={folderName}
               onSelect={onFolderChange}
+              authMode={authMode}
             />
           )}
         </div>

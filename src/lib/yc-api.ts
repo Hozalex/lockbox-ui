@@ -92,6 +92,13 @@ export function listClouds(pageSize = 100, pageToken?: string) {
   );
 }
 
+export function getFolder(folderId: string) {
+  return request<{ id: string; cloudId: string; name: string; description: string; createdAt: string; status: string }>(
+    RESOURCE_MANAGER_API,
+    `/folders/${folderId}`
+  );
+}
+
 export function listFolders(
   cloudId: string,
   pageSize = 100,
