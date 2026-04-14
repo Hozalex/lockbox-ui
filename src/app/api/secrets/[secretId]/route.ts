@@ -3,6 +3,7 @@ import { getSecret, updateSecret, deleteSecret } from "@/lib/yc-api";
 import { log } from "@/lib/logger";
 import { apiErrorResponse } from "@/lib/api-error";
 import { validateYCResourceId } from "@/lib/validation";
+import { requireSecretAccess } from "@/lib/api-rbac";
 import type { UpdateSecretRequest } from "@/lib/types";
 
 export async function GET(
@@ -14,6 +15,11 @@ export async function GET(
   if (idError) {
     return NextResponse.json({ error: idError }, { status: 400 });
   }
+
+  // RBAC: require at least ro
+  const denied = await requireSecretAccess(secretId, "ro");
+  if (denied) return denied;
+
   try {
     const data = await getSecret(secretId);
     return NextResponse.json(data);
@@ -31,6 +37,11 @@ export async function PATCH(
   if (idError) {
     return NextResponse.json({ error: idError }, { status: 400 });
   }
+
+  // RBAC: require rw to update
+  const denied = await requireSecretAccess(secretId, "rw");
+  if (denied) return denied;
+
   try {
     const body: UpdateSecretRequest = await request.json();
     const data = await updateSecret(secretId, body);
@@ -50,6 +61,11 @@ export async function DELETE(
   if (idError) {
     return NextResponse.json({ error: idError }, { status: 400 });
   }
+
+  // RBAC: require rw to delete
+  const denied = await requireSecretAccess(secretId, "rw");
+  if (denied) return denied;
+
   try {
     const data = await deleteSecret(secretId);
     log.info(`Secret deleted: ${secretId}`);

@@ -1,20 +1,7 @@
 import type { NextConfig } from "next";
 
-const isDev = process.env.NODE_ENV !== "production";
-
-const cspDirectives = [
-  "default-src 'self'",
-  // unsafe-eval is only needed in development (webpack hot reload)
-  isDev
-    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
-    : "script-src 'self' 'unsafe-inline'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
-  "font-src 'self'",
-  "connect-src 'self' https://oauth.yandex.ru",
-  "frame-ancestors 'none'",
-];
-
+// CSP is now set per-request in src/middleware.ts with a unique nonce.
+// Static headers below cover everything except CSP.
 const securityHeaders = [
   {
     key: "X-DNS-Prefetch-Control",
@@ -39,10 +26,6 @@ const securityHeaders = [
   {
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=()",
-  },
-  {
-    key: "Content-Security-Policy",
-    value: cspDirectives.join("; "),
   },
 ];
 

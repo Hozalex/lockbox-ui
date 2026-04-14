@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Select,
   SelectContent,
@@ -17,87 +17,128 @@ interface Cloud {
 interface Folder {
   id: string;
   name: string;
-  cloudId: string;
+  cloudId?: string;
 }
 
 interface FolderSelectorProps {
   selectedFolderId: string | null;
   selectedFolderName?: string | null;
   onSelect: (folderId: string, folderName: string) => void;
+  /** Called once after the first folder load attempt completes. */
+  onLoadComplete?: () => void;
 }
 
 export function FolderSelector({
   selectedFolderId,
   selectedFolderName,
   onSelect,
+  onLoadComplete,
 }: FolderSelectorProps) {
   const [clouds, setClouds] = useState<Cloud[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [selectedCloudId, setSelectedCloudId] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
+  // Keep onLoadComplete in a ref so it doesn't cause re-runs
+  const onLoadCompleteRef = useRef(onLoadComplete);
+  useEffect(() => { onLoadCompleteRef.current = onLoadComplete; }, [onLoadComplete]);
+  const loadCompleteCalledRef = useRef(false);
+  const notifyLoaded = useCallback(() => {
+    if (!loadCompleteCalledRef.current) {
+      loadCompleteCalledRef.current = true;
+      onLoadCompleteRef.current?.();
+    }
+  }, []);
+
+  // Keep onSelect in a ref so loadFolders doesn't go stale
+  const onSelectRef = useRef(onSelect);
+  useEffect(() => { onSelectRef.current = onSelect; }, [onSelect]);
+  const selectedFolderIdRef = useRef(selectedFolderId);
+  useEffect(() => { selectedFolderIdRef.current = selectedFolderId; }, [selectedFolderId]);
+
+  // Load clouds on mount
   useEffect(() => {
     let cancelled = false;
-    const load = async (retry = 0) => {
+    const load = async (retry = 0): Promise<void> => {
       try {
         const r = await fetch("/api/clouds");
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const data = await r.json();
         if (cancelled) return;
-        const list = data.clouds || [];
+        const list: Cloud[] = data.clouds || [];
         setClouds(list);
-        if (list.length === 1) {
+        if (list.length >= 1) {
           setSelectedCloudId(list[0].id);
+        } else {
+          notifyLoaded();
         }
       } catch (e) {
         if (cancelled) return;
         if (retry < 2) {
-          await new Promise((resolve) => setTimeout(resolve, 1500));
+          await new Promise((res) => setTimeout(res, 1500));
           return load(retry + 1);
         }
-        console.error("Failed to load clouds:", e);
+        if (!cancelled) {
+          setError("Не удалось загрузить список облаков");
+          console.error("Failed to load clouds:", e);
+          notifyLoaded();
+        }
       }
     };
     load();
     return () => { cancelled = true; };
-  }, []);
+  }, [notifyLoaded]);
 
-  const loadFolders = useCallback(async (cloudId: string, retry = 0) => {
+  // Load folders when cloud is selected
+  const lastCloudRef = useRef("");
+  const loadFolders = useCallback(async (cloudId: string) => {
     setLoading(true);
-    try {
-      const r = await fetch(`/api/folders?cloudId=${cloudId}`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const data = await r.json();
-      const list: Folder[] = (data.folders || []).sort(
-        (a: Folder, b: Folder) => a.name.localeCompare(b.name)
-      );
-      setFolders(list);
-      if (!selectedFolderId && list.length > 0) {
-        onSelect(list[0].id, list[0].name);
+    setError(null);
+    for (let attempt = 0; attempt <= 2; attempt++) {
+      try {
+        const r = await fetch(`/api/folders?cloudId=${cloudId}`);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        const list: Folder[] = (data.folders || []).sort(
+          (a: Folder, b: Folder) => a.name.localeCompare(b.name)
+        );
+        setFolders(list);
+        if (list.length > 0) {
+          const stored = selectedFolderIdRef.current;
+          const storedInList = stored ? list.some((f) => f.id === stored) : false;
+          if (!storedInList) {
+            onSelectRef.current(list[0].id, list[0].name);
+          }
+        }
+        break;
+      } catch (e) {
+        if (attempt === 2) {
+          setError("Не удалось загрузить каталоги");
+          console.error("Failed to load folders:", e);
+        } else {
+          await new Promise((res) => setTimeout(res, 1500));
+        }
       }
-    } catch (e) {
-      if (retry < 2) {
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        return loadFolders(cloudId, retry + 1);
-      }
-      console.error("Failed to load folders:", e);
-    } finally {
-      setLoading(false);
     }
-  }, [selectedFolderId, onSelect]);
+    setLoading(false);
+    notifyLoaded();
+  }, [notifyLoaded]);
 
   useEffect(() => {
-    if (selectedCloudId) {
+    if (selectedCloudId && selectedCloudId !== lastCloudRef.current) {
+      lastCloudRef.current = selectedCloudId;
       loadFolders(selectedCloudId);
     }
   }, [selectedCloudId, loadFolders]);
 
-  // Show a fallback item while folders haven't loaded yet
-  const hasFolderInList = useMemo(
-    () => folders.some((f) => f.id === selectedFolderId),
-    [folders, selectedFolderId]
-  );
-  const showFallback = !!selectedFolderId && !hasFolderInList && !!selectedFolderName;
+  const currentFolderInList = selectedFolderId
+    ? folders.some((f) => f.id === selectedFolderId)
+    : false;
+
+  if (error) {
+    return <span className="text-xs text-destructive">{error}</span>;
+  }
 
   return (
     <div className="flex items-center gap-2">
@@ -115,25 +156,25 @@ export function FolderSelector({
           </SelectContent>
         </Select>
       )}
+
       <Select
-        value={selectedFolderId || ""}
+        value={currentFolderInList ? (selectedFolderId ?? "") : ""}
         onValueChange={(val) => {
           const folder = folders.find((f) => f.id === val);
           if (folder) onSelect(folder.id, folder.name);
         }}
-        disabled={loading || (folders.length === 0 && !showFallback)}
+        disabled={loading}
       >
         <SelectTrigger className="w-[200px]">
-          <SelectValue
-            placeholder={loading ? "Загрузка..." : "Выберите каталог"}
-          />
+          {!currentFolderInList && selectedFolderName && !loading ? (
+            <span className="truncate text-sm">{selectedFolderName}</span>
+          ) : (
+            <SelectValue
+              placeholder={loading ? "Загрузка..." : "Выберите каталог"}
+            />
+          )}
         </SelectTrigger>
         <SelectContent>
-          {showFallback && (
-            <SelectItem value={selectedFolderId!}>
-              {selectedFolderName}
-            </SelectItem>
-          )}
           {folders.map((f) => (
             <SelectItem key={f.id} value={f.id}>
               {f.name}

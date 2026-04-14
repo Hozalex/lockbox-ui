@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 import { useAuth } from "@/components/session-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,10 +23,10 @@ export default function LoginPage() {
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, keycloakEnabled } = useAuth();
   const router = useRouter();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleOAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = token.trim();
     if (!trimmed) return;
@@ -43,6 +44,10 @@ export default function LoginPage() {
     }
   };
 
+  const handleKeycloakLogin = () => {
+    signIn("keycloak", { callbackUrl: "/secrets" });
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center">
       <Card className="w-[500px]">
@@ -53,7 +58,30 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Step 1: Get token */}
+          {/* Keycloak login (only when configured) */}
+          {keycloakEnabled && (
+            <>
+              <Button
+                className="w-full"
+                size="lg"
+                onClick={handleKeycloakLogin}
+              >
+                Войти через Keycloak
+              </Button>
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <Separator className="w-full" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-card px-2 text-muted-foreground">
+                    или
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* OAuth login (always available) */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground">
@@ -77,8 +105,7 @@ export default function LoginPage() {
 
           <Separator />
 
-          {/* Step 2: Paste token */}
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleOAuthSubmit} className="space-y-4">
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground">
@@ -109,9 +136,10 @@ export default function LoginPage() {
               type="submit"
               className="w-full"
               size="lg"
+              variant={keycloakEnabled ? "outline" : "default"}
               disabled={loading || !token.trim()}
             >
-              {loading ? "Проверка..." : "Войти"}
+              {loading ? "Проверка..." : "Войти с OAuth-токеном"}
             </Button>
           </form>
         </CardContent>

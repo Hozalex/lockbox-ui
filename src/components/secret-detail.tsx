@@ -34,6 +34,7 @@ import { Separator } from "@/components/ui/separator";
 import { ValueCell } from "@/components/value-cell";
 import { VersionCreateDialog } from "@/components/version-create-dialog";
 import { SecretCreateDialog } from "@/components/secret-create-dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { Secret, PayloadEntry, SecretVersion } from "@/lib/types";
 
 function isValidSecret(data: unknown): data is Secret {
@@ -47,9 +48,10 @@ function isValidSecret(data: unknown): data is Secret {
 
 interface SecretDetailProps {
   secretId: string;
+  canWrite?: boolean;
 }
 
-export function SecretDetail({ secretId }: SecretDetailProps) {
+export function SecretDetail({ secretId, canWrite = true }: SecretDetailProps) {
   const router = useRouter();
   const [secret, setSecret] = useState<Secret | null>(null);
   const [entries, setEntries] = useState<PayloadEntry[]>([]);
@@ -327,8 +329,46 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
 
   if (loading) {
     return (
-      <div className="py-8 text-center text-muted-foreground">
-        Загрузка...
+      <div className="space-y-6">
+        {/* Back button + title */}
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-8 w-64" />
+          </div>
+          <div className="flex gap-2">
+            <Skeleton className="h-8 w-28" />
+            <Skeleton className="h-8 w-24" />
+            <Skeleton className="h-8 w-20" />
+          </div>
+        </div>
+        {/* Info card */}
+        <div className="rounded-lg border p-6 space-y-4">
+          <Skeleton className="h-5 w-24" />
+          <div className="grid grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="space-y-2">
+                <Skeleton className="h-3 w-16" />
+                <Skeleton className="h-4 w-24" />
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* Tabs */}
+        <div className="space-y-4">
+          <div className="flex gap-2">
+            <Skeleton className="h-9 w-36" />
+            <Skeleton className="h-9 w-28" />
+          </div>
+          <div className="rounded-lg border">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="border-b last:border-0 px-4 py-3 flex gap-8 items-center">
+                <Skeleton className="h-4 w-[200px]" />
+                <Skeleton className="h-4 w-[300px]" />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
@@ -369,30 +409,36 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
           )}
         </div>
         <div className="flex gap-2">
-          <Button
-            size="sm"
-            onClick={() => setShowVersionDialog(true)}
-          >
-            Новая версия
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowCloneDialog(true)}
-          >
-            Клонировать
-          </Button>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => {
-              setDeleteConfirmText("");
-              setShowDeleteDialog(true);
-            }}
-            disabled={deleting || secret.deletionProtection}
-          >
-            {deleting ? "Удаление..." : "Удалить"}
-          </Button>
+          {canWrite && (
+            <Button
+              size="sm"
+              onClick={() => setShowVersionDialog(true)}
+            >
+              Новая версия
+            </Button>
+          )}
+          {canWrite && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowCloneDialog(true)}
+            >
+              Клонировать
+            </Button>
+          )}
+          {canWrite && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                setDeleteConfirmText("");
+                setShowDeleteDialog(true);
+              }}
+              disabled={deleting || secret.deletionProtection}
+            >
+              {deleting ? "Удаление..." : "Удалить"}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -592,42 +638,44 @@ export function SecretDetail({ secretId }: SecretDetailProps) {
                   </TableCell>
                   <TableCell>{v.payloadEntryKeys?.length || 0}</TableCell>
                   <TableCell>
-                    <div className="flex gap-1 flex-wrap">
-                      {v.status === "ACTIVE" &&
-                        v.id !== secret.currentVersion?.id && (
-                          <>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-xs"
-                              disabled={rollingBack === v.id}
-                              onClick={() => handleRollback(v.id)}
-                            >
-                              {rollingBack === v.id ? "Откат..." : "Сделать текущей"}
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-xs"
-                              onClick={() =>
-                                handleScheduleDestruction(v.id, "604800s")
-                              }
-                            >
-                              Удалить через 7д
-                            </Button>
-                          </>
+                    {canWrite && (
+                      <div className="flex gap-1 flex-wrap">
+                        {v.status === "ACTIVE" &&
+                          v.id !== secret.currentVersion?.id && (
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-xs"
+                                disabled={rollingBack === v.id}
+                                onClick={() => handleRollback(v.id)}
+                              >
+                                {rollingBack === v.id ? "Откат..." : "Сделать текущей"}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-xs"
+                                onClick={() =>
+                                  handleScheduleDestruction(v.id, "604800s")
+                                }
+                              >
+                                Удалить через 7д
+                              </Button>
+                            </>
+                          )}
+                        {v.status === "SCHEDULED_FOR_DESTRUCTION" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs"
+                            onClick={() => handleCancelDestruction(v.id)}
+                          >
+                            Отменить удаление
+                          </Button>
                         )}
-                      {v.status === "SCHEDULED_FOR_DESTRUCTION" && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-xs"
-                          onClick={() => handleCancelDestruction(v.id)}
-                        >
-                          Отменить удаление
-                        </Button>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

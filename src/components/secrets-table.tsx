@@ -19,10 +19,12 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Copy, Check } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { Secret, SecretVersion } from "@/lib/types";
 
 interface SecretsTableProps {
   folderId: string;
+  canWrite?: boolean;
   onCreateClick: () => void;
 }
 
@@ -32,7 +34,7 @@ const STATUS_COLORS: Record<string, string> = {
   CREATING: "bg-yellow-100 text-yellow-800",
 };
 
-export function SecretsTable({ folderId, onCreateClick }: SecretsTableProps) {
+export function SecretsTable({ folderId, canWrite = true, onCreateClick }: SecretsTableProps) {
   const router = useRouter();
   const [secrets, setSecrets] = useState<Secret[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,9 +82,6 @@ export function SecretsTable({ folderId, onCreateClick }: SecretsTableProps) {
           router.push("/login");
           return;
         }
-        if (r.status === 403) {
-          throw new Error("Нет доступа к секретам в этом каталоге. Проверьте права IAM-токена.");
-        }
         const body = await r.text().catch(() => "");
         let msg = `HTTP ${r.status}`;
         try {
@@ -90,6 +89,9 @@ export function SecretsTable({ folderId, onCreateClick }: SecretsTableProps) {
           if (parsed.error) msg = parsed.error;
         } catch {
           // use default msg
+        }
+        if (r.status === 403 && msg === `HTTP ${r.status}`) {
+          msg = "Нет доступа к секретам в этом каталоге. Проверьте права IAM-токена.";
         }
         throw new Error(msg);
       }
@@ -120,7 +122,37 @@ export function SecretsTable({ folderId, onCreateClick }: SecretsTableProps) {
   }, [loadSecrets]);
 
   if (loading) {
-    return <div className="py-8 text-center text-muted-foreground">Загрузка секретов...</div>;
+    return (
+      <div>
+        <div className="mb-4 flex items-center justify-between">
+          <Skeleton className="h-7 w-36" />
+          <div className="flex gap-2">
+            <Skeleton className="h-8 w-20" />
+            {canWrite && <Skeleton className="h-8 w-28" />}
+          </div>
+        </div>
+        <div className="rounded-lg border">
+          <div className="border-b px-4 py-3 flex gap-6">
+            {[140, 130, 70, 60, 70, 60, 100].map((w, i) => (
+              <Skeleton key={i} className="h-4" style={{ width: w }} />
+            ))}
+          </div>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="border-b last:border-0 px-4 py-3 flex gap-6 items-center">
+              <Skeleton className="h-4 w-[140px]" />
+              <Skeleton className="h-4 w-[130px]" />
+              <Skeleton className="h-5 w-[70px] rounded-full" />
+              <Skeleton className="h-4 w-[60px]" />
+              <Skeleton className="h-4 w-[70px]" />
+              <Skeleton className="h-4 w-[60px]" />
+              <div className="flex gap-1">
+                <Skeleton className="h-5 w-[100px] rounded-full" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   if (error) {
@@ -144,9 +176,11 @@ export function SecretsTable({ folderId, onCreateClick }: SecretsTableProps) {
           <Button variant="outline" size="sm" onClick={() => loadSecrets()}>
             Обновить
           </Button>
-          <Button size="sm" onClick={onCreateClick}>
-            Создать секрет
-          </Button>
+          {canWrite && (
+            <Button size="sm" onClick={onCreateClick}>
+              Создать секрет
+            </Button>
+          )}
         </div>
       </div>
 

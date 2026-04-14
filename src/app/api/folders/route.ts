@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { listFolders } from "@/lib/yc-api";
 import { apiErrorResponse } from "@/lib/api-error";
 import { validateYCResourceId } from "@/lib/validation";
+import { filterFoldersByAccess } from "@/lib/api-rbac";
 
 export async function GET(request: NextRequest) {
   const cloudId = request.nextUrl.searchParams.get("cloudId");
@@ -19,7 +20,13 @@ export async function GET(request: NextRequest) {
 
   try {
     const data = await listFolders(cloudId);
-    return NextResponse.json(data);
+    const folders = data.folders || [];
+
+    // Keycloak users: filter to only folders they have access to (by role).
+    // OAuth users: return everything — YC IAM handles access.
+    const filtered = await filterFoldersByAccess(folders);
+
+    return NextResponse.json({ ...data, folders: filtered });
   } catch (e) {
     return apiErrorResponse(e, `GET /api/folders (cloudId=${cloudId})`);
   }
