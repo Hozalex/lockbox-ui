@@ -1,29 +1,7 @@
 import type { NextConfig } from "next";
 
-const isDev = process.env.NODE_ENV !== "production";
-
-const keycloakIssuer = process.env.KEYCLOAK_ISSUER || "";
-// Extract origin from issuer URL for CSP (e.g. "https://keycloak.example.com")
-const keycloakOrigin = keycloakIssuer
-  ? new URL(keycloakIssuer).origin
-  : "";
-
-const connectSources = ["'self'", "https://oauth.yandex.ru"];
-if (keycloakOrigin) connectSources.push(keycloakOrigin);
-
-const cspDirectives = [
-  "default-src 'self'",
-  // unsafe-eval is only needed in development (webpack hot reload)
-  isDev
-    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
-    : "script-src 'self' 'unsafe-inline'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
-  "font-src 'self'",
-  `connect-src ${connectSources.join(" ")}`,
-  "frame-ancestors 'none'",
-];
-
+// CSP is now set per-request in src/middleware.ts with a unique nonce.
+// Static headers below cover everything except CSP.
 const securityHeaders = [
   {
     key: "X-DNS-Prefetch-Control",
@@ -48,10 +26,6 @@ const securityHeaders = [
   {
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=()",
-  },
-  {
-    key: "Content-Security-Policy",
-    value: cspDirectives.join("; "),
   },
 ];
 

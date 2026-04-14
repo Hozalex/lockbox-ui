@@ -16,6 +16,53 @@ const COOKIE_OPTS = {
   path: "/",
 };
 
+// ── Rate limiting (in-memory, per IP) ────────────────────────────────────────
+// Protects against brute-force OAuth token guessing.
+// Not suitable for multi-instance deployments — use Redis-based limiter there.
+const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const RATE_LIMIT_MAX_ATTEMPTS = 10;
+
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+function getClientIp(request: NextRequest): string {
+  return (
+    request.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
+    request.headers.get("x-real-ip") ||
+    "unknown"
+  );
+}
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+
+  if (!entry || entry.resetAt < now) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return true;
+  }
+
+  if (entry.count >= RATE_LIMIT_MAX_ATTEMPTS) return false;
+  entry.count++;
+  return true;
+}
+
+// ── CSRF: Origin validation ───────────────────────────────────────────────────
+// Complements sameSite: lax. Rejects requests from unexpected origins.
+function isValidOrigin(request: NextRequest): boolean {
+  const origin = request.headers.get("origin");
+  // No Origin header — typically same-origin or non-browser (CLI, server). Allow.
+  if (!origin) return true;
+
+  const host = request.headers.get("host");
+  if (!host) return false;
+
+  // Accept both http and https to work in dev and prod
+  return (
+    origin === `https://${host}` ||
+    origin === `http://${host}`
+  );
+}
+
 function parseYCError(body: string): string {
   try {
     const parsed = JSON.parse(body);
@@ -48,6 +95,22 @@ async function exchangeOAuthForIAM(
 
 // POST /api/auth/oauth — save OAuth token, exchange for IAM
 export async function POST(request: NextRequest) {
+  // CSRF check
+  if (!isValidOrigin(request)) {
+    log.warn("Auth POST rejected: invalid Origin header");
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  // Rate limiting
+  const ip = getClientIp(request);
+  if (!checkRateLimit(ip)) {
+    log.warn(`Auth POST rate limited for IP: ${ip}`);
+    return NextResponse.json(
+      { error: "Слишком много попыток. Попробуйте позже." },
+      { status: 429 }
+    );
+  }
+
   try {
     const body = await request.json();
     const { token } = body;
@@ -79,19 +142,19 @@ export async function POST(request: NextRequest) {
 
     const response = NextResponse.json({ ok: true });
 
-    // Store OAuth token (lives ~1 year)
+    // OAuth token: 30 days (down from 1 year — user re-authenticates if idle)
     response.cookies.set(OAUTH_COOKIE, token, {
       ...COOKIE_OPTS,
-      maxAge: 365 * 24 * 60 * 60,
+      maxAge: 30 * 24 * 60 * 60,
     });
 
-    // Store IAM token (lives ~12h)
+    // IAM token (lives ~12h, auto-refreshed from OAuth token)
     response.cookies.set(IAM_COOKIE, iamToken, {
       ...COOKIE_OPTS,
       maxAge: 12 * 60 * 60,
     });
 
-    // Store expiration timestamp
+    // IAM expiry timestamp (httpOnly — not readable by client JS)
     response.cookies.set(IAM_EXPIRES_COOKIE, expiresAt, {
       ...COOKIE_OPTS,
       maxAge: 12 * 60 * 60,
@@ -110,7 +173,11 @@ export async function POST(request: NextRequest) {
 }
 
 // DELETE /api/auth/oauth — clear all tokens (logout)
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
+  if (!isValidOrigin(request)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   log.info("Logout");
   const response = NextResponse.json({ ok: true });
   for (const name of [OAUTH_COOKIE, IAM_COOKIE, IAM_EXPIRES_COOKIE]) {

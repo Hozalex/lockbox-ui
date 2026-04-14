@@ -164,8 +164,12 @@ export async function requireSecretAccess(
     const secret = await getSecret(secretId);
     return requireFolderAccess(secret.folderId, requiredAccess);
   } catch {
-    // If we can't fetch the secret, let the actual API call handle the error
-    return null;
+    // Fail closed: if we cannot verify access, deny rather than allow.
+    // The actual API call below would likely fail too, but we must not skip RBAC silently.
+    return NextResponse.json(
+      { error: "Не удалось проверить доступ к секрету" },
+      { status: 403 }
+    );
   }
 }
 
