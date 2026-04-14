@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useFolderStorage } from "@/hooks/useFolderStorage";
 import { useCanWrite } from "@/hooks/useFolderAccess";
@@ -16,6 +16,14 @@ export default function SecretsPage() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // Don't render secrets until the folder selector has finished its first load.
+  // This prevents SecretsTable from firing API calls with a stale/wrong folderId
+  // before the selector can auto-switch to the correct folder (e.g. for Keycloak users).
+  const [folderSelectorLoaded, setFolderSelectorLoaded] = useState(false);
+  const handleFolderSelectorLoaded = useCallback(() => {
+    setFolderSelectorLoaded(true);
+  }, []);
+
   const handleFolderChange = (id: string, name: string) => {
     setFolder(id, name);
   };
@@ -26,9 +34,17 @@ export default function SecretsPage() {
 
   return (
     <div className="min-h-screen">
-      <Header folderId={folderId} folderName={folderName} onFolderChange={handleFolderChange} />
+      <Header
+        folderId={folderId}
+        folderName={folderName}
+        onFolderChange={handleFolderChange}
+        onFolderSelectorLoaded={handleFolderSelectorLoaded}
+      />
       <main className="container mx-auto px-4 py-6">
-        {folderId ? (
+        {!folderSelectorLoaded ? (
+          // Folder selector is still loading — show skeleton to avoid stale API calls
+          <PageLoader hideHeader />
+        ) : folderId ? (
           <>
             <SecretsTable
               key={`${folderId}-${refreshKey}`}

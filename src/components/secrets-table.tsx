@@ -82,9 +82,6 @@ export function SecretsTable({ folderId, canWrite = true, onCreateClick }: Secre
           router.push("/login");
           return;
         }
-        if (r.status === 403) {
-          throw new Error("Нет доступа к секретам в этом каталоге. Проверьте права IAM-токена.");
-        }
         const body = await r.text().catch(() => "");
         let msg = `HTTP ${r.status}`;
         try {
@@ -92,6 +89,9 @@ export function SecretsTable({ folderId, canWrite = true, onCreateClick }: Secre
           if (parsed.error) msg = parsed.error;
         } catch {
           // use default msg
+        }
+        if (r.status === 403 && msg === `HTTP ${r.status}`) {
+          msg = "Нет доступа к секретам в этом каталоге. Проверьте права IAM-токена.";
         }
         throw new Error(msg);
       }

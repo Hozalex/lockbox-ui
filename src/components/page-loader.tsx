@@ -1,25 +1,32 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
-/** Full-page skeleton shown while auth/session is being resolved */
-export function PageLoader() {
+interface PageLoaderProps {
+  /** When true, skip the header skeleton (header is already rendered by the parent). */
+  hideHeader?: boolean;
+}
+
+/** Full-page skeleton shown while auth/session or folder selector is loading. */
+export function PageLoader({ hideHeader }: PageLoaderProps) {
   return (
-    <div className="min-h-screen">
-      {/* Header skeleton */}
-      <div className="border-b bg-background">
-        <div className="container mx-auto flex h-14 items-center justify-between px-4">
-          <div className="flex items-center gap-4">
-            <Skeleton className="h-5 w-24" />
-            <Skeleton className="h-8 w-[200px]" />
-          </div>
-          <div className="flex items-center gap-2">
-            <Skeleton className="h-8 w-8 rounded-full" />
-            <Skeleton className="h-8 w-16" />
+    <div className={hideHeader ? undefined : "min-h-screen"}>
+      {/* Header skeleton — only when not already rendered */}
+      {!hideHeader && (
+        <div className="border-b bg-background">
+          <div className="container mx-auto flex h-14 items-center justify-between px-4">
+            <div className="flex items-center gap-4">
+              <Skeleton className="h-5 w-24" />
+              <Skeleton className="h-8 w-[200px]" />
+            </div>
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-8 w-8 rounded-full" />
+              <Skeleton className="h-8 w-16" />
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Content skeleton */}
-      <main className="container mx-auto px-4 py-6">
+      <div className={hideHeader ? undefined : "container mx-auto px-4 py-6"}>
         <div className="mb-4 flex items-center justify-between">
           <Skeleton className="h-7 w-40" />
           <div className="flex gap-2">
@@ -43,7 +50,7 @@ export function PageLoader() {
             </div>
           ))}
         </div>
-      </main>
+      </div>
     </div>
   );
 }

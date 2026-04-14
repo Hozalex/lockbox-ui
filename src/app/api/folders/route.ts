@@ -22,7 +22,8 @@ export async function GET(request: NextRequest) {
     const data = await listFolders(cloudId);
     const folders = data.folders || [];
 
-    // Filter folders by Keycloak roles (no-op for OAuth users)
+    // Keycloak users: filter to only folders they have access to (by role).
+    // OAuth users: return everything — YC IAM handles access.
     const filtered = await filterFoldersByAccess(folders);
 
     return NextResponse.json({ ...data, folders: filtered });

@@ -11,9 +11,10 @@ interface HeaderProps {
   folderId: string | null;
   folderName?: string | null;
   onFolderChange: (folderId: string, folderName: string) => void;
+  onFolderSelectorLoaded?: () => void;
 }
 
-export function Header({ folderId, folderName, onFolderChange }: HeaderProps) {
+export function Header({ folderId, folderName, onFolderChange, onFolderSelectorLoaded }: HeaderProps) {
   const { authenticated, authMode, logout } = useAuth();
   const router = useRouter();
 
@@ -34,7 +35,7 @@ export function Header({ folderId, folderName, onFolderChange }: HeaderProps) {
               selectedFolderId={folderId}
               selectedFolderName={folderName}
               onSelect={onFolderChange}
-              authMode={authMode}
+              onLoadComplete={onFolderSelectorLoaded}
             />
           )}
         </div>
