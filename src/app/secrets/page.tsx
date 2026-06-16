@@ -3,7 +3,8 @@
 import { useState, useCallback } from "react";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useFolderStorage } from "@/hooks/useFolderStorage";
-import { useCanWrite } from "@/hooks/useFolderAccess";
+import { useFolderAccess, useWritableProjects } from "@/hooks/useFolderAccess";
+import { useAuth } from "@/components/session-provider";
 import { Header } from "@/components/header";
 import { SecretsTable } from "@/components/secrets-table";
 import { SecretCreateDialog } from "@/components/secret-create-dialog";
@@ -11,9 +12,19 @@ import { PageLoader } from "@/components/page-loader";
 
 export default function SecretsPage() {
   const { authenticated, loading } = useRequireAuth();
+  const { authMode, projects } = useAuth();
   const { folderId, folderName, setFolder } = useFolderStorage();
-  const canWrite = useCanWrite(folderName);
+  const folderAccess = useFolderAccess(folderName);
+  const writableProjects = useWritableProjects(folderName);
+  // With no project registry the feature is off: allow creating an unlabeled
+  // secret when the user has folder-level write access (back-compat).
+  const registryEmpty = projects.length === 0;
+  const canCreate =
+    writableProjects.length > 0 ||
+    (registryEmpty && (folderAccess === "full" || folderAccess === "rw"));
+  const projectRequired = authMode === "keycloak" && !registryEmpty;
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [createProject, setCreateProject] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Don't render secrets until the folder selector has finished its first load.
@@ -22,6 +33,12 @@ export default function SecretsPage() {
   const [folderSelectorLoaded, setFolderSelectorLoaded] = useState(false);
   const handleFolderSelectorLoaded = useCallback(() => {
     setFolderSelectorLoaded(true);
+  }, []);
+
+  // Number of folders the user can actually reach (null = unknown / load error).
+  const [folderCount, setFolderCount] = useState<number | null>(null);
+  const handleFoldersLoaded = useCallback((count: number | null) => {
+    setFolderCount(count);
   }, []);
 
   const handleFolderChange = (id: string, name: string) => {
@@ -39,24 +56,42 @@ export default function SecretsPage() {
         folderName={folderName}
         onFolderChange={handleFolderChange}
         onFolderSelectorLoaded={handleFolderSelectorLoaded}
+        onFoldersLoaded={handleFoldersLoaded}
       />
       <main className="container mx-auto px-4 py-6">
         {!folderSelectorLoaded ? (
           // Folder selector is still loading — show skeleton to avoid stale API calls
           <PageLoader hideHeader />
+        ) : folderCount === 0 ? (
+          // Authenticated but no folder/project is accessible — explain why
+          // (takes precedence over any stale folder id in localStorage).
+          <div className="mx-auto max-w-xl py-16 text-center">
+            <h2 className="text-lg font-semibold">No access</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {authMode === "keycloak"
+                ? "You don't have access to any folder or project. Ask an administrator to grant you a role such as lockbox:<folder>:<project>:ro|rw (or lockbox:<folder>:ro|rw for a whole folder)."
+                : "No folders are available for your account. Make sure your Yandex Cloud token has access to a folder in this cloud."}
+            </p>
+          </div>
         ) : folderId ? (
           <>
             <SecretsTable
               key={`${folderId}-${refreshKey}`}
               folderId={folderId}
-              canWrite={canWrite}
-              onCreateClick={() => setShowCreateDialog(true)}
+              folderName={folderName}
+              onCreateClick={(project) => {
+                setCreateProject(project);
+                setShowCreateDialog(true);
+              }}
             />
-            {canWrite && (
+            {canCreate && (
               <SecretCreateDialog
                 open={showCreateDialog}
                 onOpenChange={setShowCreateDialog}
                 folderId={folderId}
+                writableProjects={writableProjects}
+                presetProject={createProject}
+                projectRequired={projectRequired}
                 onSuccess={() => {
                   setShowCreateDialog(false);
                   setRefreshKey((k) => k + 1);

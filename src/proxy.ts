@@ -55,11 +55,11 @@ function withNonce(request: NextAuthRequest): NextResponse {
   return response;
 }
 
-// ── Middleware ────────────────────────────────────────────────────────────────
+// ── Proxy (formerly "middleware") ───────────────────────────────────────────
 // Wrapping with auth() from next-auth populates request.auth only when the
 // session JWT is cryptographically valid (signed with NEXTAUTH_SECRET).
-// This is the recommended next-auth v5 pattern for middleware.
-export default auth(function middleware(request) {
+// This is the recommended next-auth v5 pattern for the request proxy.
+export default auth(function proxy(request) {
   const { pathname } = request.nextUrl;
 
   if (isPublic(pathname)) {

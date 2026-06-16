@@ -26,6 +26,8 @@ interface FolderSelectorProps {
   onSelect: (folderId: string, folderName: string) => void;
   /** Called once after the first folder load attempt completes. */
   onLoadComplete?: () => void;
+  /** Reports the number of accessible folders after each load (null = unknown/error). */
+  onFoldersLoaded?: (count: number | null) => void;
 }
 
 export function FolderSelector({
@@ -33,6 +35,7 @@ export function FolderSelector({
   selectedFolderName,
   onSelect,
   onLoadComplete,
+  onFoldersLoaded,
 }: FolderSelectorProps) {
   const [clouds, setClouds] = useState<Cloud[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -43,6 +46,8 @@ export function FolderSelector({
   // Keep onLoadComplete in a ref so it doesn't cause re-runs
   const onLoadCompleteRef = useRef(onLoadComplete);
   useEffect(() => { onLoadCompleteRef.current = onLoadComplete; }, [onLoadComplete]);
+  const onFoldersLoadedRef = useRef(onFoldersLoaded);
+  useEffect(() => { onFoldersLoadedRef.current = onFoldersLoaded; }, [onFoldersLoaded]);
   const loadCompleteCalledRef = useRef(false);
   const notifyLoaded = useCallback(() => {
     if (!loadCompleteCalledRef.current) {
@@ -71,6 +76,8 @@ export function FolderSelector({
         if (list.length >= 1) {
           setSelectedCloudId(list[0].id);
         } else {
+          // No clouds reachable — nothing to select.
+          onFoldersLoadedRef.current?.(0);
           notifyLoaded();
         }
       } catch (e) {
@@ -104,6 +111,7 @@ export function FolderSelector({
           (a: Folder, b: Folder) => a.name.localeCompare(b.name)
         );
         setFolders(list);
+        onFoldersLoadedRef.current?.(list.length);
         if (list.length > 0) {
           const stored = selectedFolderIdRef.current;
           const storedInList = stored ? list.some((f) => f.id === stored) : false;
@@ -116,6 +124,7 @@ export function FolderSelector({
         if (attempt === 2) {
           setError("Не удалось загрузить каталоги");
           console.error("Failed to load folders:", e);
+          onFoldersLoadedRef.current?.(null); // unknown — load failed
         } else {
           await new Promise((res) => setTimeout(res, 1500));
         }

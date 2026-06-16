@@ -2,6 +2,11 @@
 
 import { useMemo } from "react";
 import { useAuth } from "@/components/session-provider";
+import {
+  resolveSecretAccess,
+  writableProjects,
+  type FolderAccess,
+} from "@/lib/rbac";
 
 export type FolderAccessLevel = "full" | "rw" | "ro" | "none";
 
@@ -40,8 +45,47 @@ export function useFolderAccess(folderName: string | null): FolderAccessLevel {
   }, [authenticated, authMode, roles, folderName]);
 }
 
-/** Convenience: can the user write to this folder? */
-export function useCanWrite(folderName: string | null): boolean {
-  const access = useFolderAccess(folderName);
-  return access === "full" || access === "rw";
+/**
+ * Access level for a single project (label value) inside a folder.
+ *
+ * - OAuth mode: "full" (no RBAC).
+ * - Keycloak mode: max of folder-wide and project-specific roles.
+ * - `project === null` means an unlabeled secret — only folder-wide/admin
+ *   users get access.
+ */
+export function useProjectAccess(
+  folderName: string | null,
+  project: string | null
+): FolderAccessLevel {
+  const { authenticated, authMode, roles } = useAuth();
+
+  return useMemo(() => {
+    if (!authenticated) return "none";
+    if (authMode === "oauth") return "full";
+    if (authMode !== "keycloak") return "none";
+    if (!folderName) return "none";
+
+    const access: FolderAccess | null = resolveSecretAccess(
+      roles,
+      folderName,
+      project
+    );
+    return access ?? "none";
+  }, [authenticated, authMode, roles, folderName, project]);
+}
+
+/** Projects (registry names) the user can create secrets in, for a folder. */
+export function useWritableProjects(folderName: string | null): string[] {
+  const { authMode, roles, projects } = useAuth();
+
+  return useMemo(
+    () =>
+      writableProjects({
+        isOAuth: authMode === "oauth",
+        roles,
+        folderName,
+        registry: projects,
+      }),
+    [authMode, roles, folderName, projects]
+  );
 }

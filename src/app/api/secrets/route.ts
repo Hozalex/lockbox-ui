@@ -3,7 +3,11 @@ import { listSecrets, createSecret } from "@/lib/yc-api";
 import { log } from "@/lib/logger";
 import { apiErrorResponse } from "@/lib/api-error";
 import { validateYCResourceId, validateSecretName } from "@/lib/validation";
-import { requireFolderAccess } from "@/lib/api-rbac";
+import {
+  requireFolderViewAccess,
+  filterSecretsByProjectAccess,
+  requireCreateAccess,
+} from "@/lib/api-rbac";
 import type { CreateSecretRequest } from "@/lib/types";
 
 export async function GET(request: NextRequest) {
@@ -20,8 +24,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: folderIdError }, { status: 400 });
   }
 
-  // RBAC: require at least ro access
-  const denied = await requireFolderAccess(folderId, "ro");
+  // RBAC: user must have some access in the folder (folder-wide or a project)
+  const denied = await requireFolderViewAccess(folderId);
   if (denied) return denied;
 
   const pageToken =
@@ -29,7 +33,12 @@ export async function GET(request: NextRequest) {
 
   try {
     const data = await listSecrets(folderId, 100, pageToken);
-    return NextResponse.json(data);
+    // Filter to secrets the user may see, based on each secret's project label.
+    const secrets = await filterSecretsByProjectAccess(
+      folderId,
+      data.secrets || []
+    );
+    return NextResponse.json({ ...data, secrets });
   } catch (e) {
     return apiErrorResponse(e, `GET /api/secrets (folderId=${folderId})`);
   }
@@ -55,8 +64,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: nameError }, { status: 400 });
     }
 
-    // RBAC: require rw access to create
-    const denied = await requireFolderAccess(body.folderId, "rw");
+    // RBAC: require rw on the target project (and a valid project label)
+    const denied = await requireCreateAccess(body.folderId, body.labels);
     if (denied) return denied;
 
     const data = await createSecret(body);

@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 
-// CSP is now set per-request in src/middleware.ts with a unique nonce.
+// CSP is now set per-request in src/proxy.ts with a unique nonce.
 // Static headers below cover everything except CSP.
 const securityHeaders = [
   {

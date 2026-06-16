@@ -3,6 +3,8 @@
 export interface Secret {
   id: string;
   folderId: string;
+  /** Folder name, attached by GET /api/secrets/[secretId] for client RBAC. */
+  folderName?: string;
   createdAt: string;
   name: string;
   description: string;
