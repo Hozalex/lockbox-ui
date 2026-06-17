@@ -28,6 +28,14 @@ interface LabelEntry {
   value: string;
 }
 
+// Each folder has a KMS key for the kuber cluster (named `k8s-kms-key-...`) —
+// default to it. Falls back to the first available key if the name differs.
+const CLUSTER_KEY_RE = /^k8s-kms-key/i;
+function pickDefaultKmsKey(keys: Array<{ id: string; name: string }>): string {
+  const cluster = keys.find((k) => CLUSTER_KEY_RE.test(k.name || ""));
+  return (cluster ?? keys[0])?.id ?? "";
+}
+
 interface SecretCreateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -161,6 +169,9 @@ export function SecretCreateDialog({
             setKmsCustom(true);
           } else {
             setKmsCustom(false);
+            // Pre-select the cluster KMS key, unless the user already picked one.
+            const def = pickDefaultKmsKey(keys);
+            if (def) setKmsKeyId((prev) => prev || def);
           }
         })
         .catch(() => setKmsCustom(true))
