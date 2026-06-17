@@ -2,8 +2,18 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { auth } from "@/auth";
 import { getSecret, listFolders, listClouds, getFolder } from "@/lib/yc-api";
-import { isAdmin, parseFolderPermissions } from "@/lib/rbac";
+import {
+  isAdmin,
+  folderHasAnyAccess,
+  hasFolderWideAccess,
+  folderTopAccess,
+  resolveSecretAccess,
+  makeSecretAccessResolver,
+  normalizeProject,
+} from "@/lib/rbac";
+import { getProjectRegistry } from "@/lib/projects";
 import type { FolderAccess } from "@/lib/rbac";
+import type { Secret, UpdateSecretRequest } from "@/lib/types";
 
 /**
  * Determine current auth mode from cookies.
@@ -88,64 +98,133 @@ export async function getFolderName(folderId: string): Promise<string | null> {
 }
 
 /**
- * Check if the current user has at least the required access level to a folder.
+ * Allow viewing a folder's contents (secrets list, KMS keys) if the user has
+ * any access inside it — folder-wide OR at least one project role. The actual
+ * per-secret filtering is done separately by filterSecretsByProjectAccess.
  *
- * For OAuth users: always allowed (access is determined by their IAM token in YC).
- * For Keycloak users: checks roles against folder name.
- *
- * Returns null if allowed, or a NextResponse with 403 if denied.
+ * Returns null if allowed, or a NextResponse (401/403) if denied.
  */
-export async function requireFolderAccess(
-  folderId: string,
-  requiredAccess: FolderAccess
+export async function requireFolderViewAccess(
+  folderId: string
 ): Promise<NextResponse | null> {
   const mode = await getAuthMode();
-
-  // OAuth users — no RBAC, YC IAM handles access
   if (mode === "oauth") return null;
-
-  // Not authenticated
   if (mode !== "keycloak") {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
   const roles = await getKeycloakRoles();
-
-  // Superadmin — all access
   if (isAdmin(roles)) return null;
 
   const folderName = await getFolderName(folderId);
   if (!folderName) {
-    return NextResponse.json(
-      { error: "Каталог не найден" },
-      { status: 404 }
-    );
+    return NextResponse.json({ error: "Каталог не найден" }, { status: 404 });
   }
 
-  const permissions = parseFolderPermissions(roles);
-  const perm = permissions.find((p) => p.folderName === folderName);
+  // When the project registry is empty the feature is off — fall back to
+  // folder-wide RBAC so project-only roles don't grant a silently empty view.
+  const registry = getProjectRegistry();
+  const allowed =
+    registry.length === 0
+      ? hasFolderWideAccess(roles, folderName)
+      : folderHasAnyAccess(roles, folderName);
 
-  if (!perm) {
+  if (!allowed) {
     return NextResponse.json(
       { error: "Нет доступа к этому каталогу" },
       { status: 403 }
     );
   }
-
-  // If rw is required but user only has ro
-  if (requiredAccess === "rw" && perm.access === "ro") {
-    return NextResponse.json(
-      { error: "Недостаточно прав. Требуется доступ на запись." },
-      { status: 403 }
-    );
-  }
-
   return null;
 }
 
 /**
- * Check folder access for a secret (by secretId).
- * Fetches the secret to determine its folderId, then checks access.
+ * Filter a folder's secrets to those the user may see, based on each secret's
+ * `project` label. OAuth users get everything (YC IAM handles access).
+ */
+export async function filterSecretsByProjectAccess(
+  folderId: string,
+  secrets: Secret[]
+): Promise<Secret[]> {
+  const mode = await getAuthMode();
+  if (mode === "oauth") return secrets;
+  if (mode !== "keycloak") return [];
+
+  const roles = await getKeycloakRoles();
+  if (isAdmin(roles)) return secrets;
+
+  const folderName = await getFolderName(folderId);
+  if (!folderName) return [];
+
+  const registry = getProjectRegistry();
+  // Feature off — the view gate already limited this to folder-wide access.
+  if (registry.length === 0) return secrets;
+
+  // Parse roles once, then filter all secrets against the resolver.
+  const resolve = makeSecretAccessResolver(roles, folderName);
+  return secrets.filter(
+    (s) => resolve(normalizeProject(s.labels, registry)) !== null
+  );
+}
+
+/**
+ * Enforce access for creating a secret. Non-admin Keycloak users must target a
+ * valid registry project (via the `project` label) and have rw on it.
+ */
+export async function requireCreateAccess(
+  folderId: string,
+  labels: Record<string, string> | undefined
+): Promise<NextResponse | null> {
+  const mode = await getAuthMode();
+  if (mode === "oauth") return null;
+  if (mode !== "keycloak") {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  const roles = await getKeycloakRoles();
+  if (isAdmin(roles)) return null;
+
+  const folderName = await getFolderName(folderId);
+  if (!folderName) {
+    return NextResponse.json({ error: "Каталог не найден" }, { status: 404 });
+  }
+
+  const registry = getProjectRegistry();
+
+  // Feature off — fall back to folder-wide rw (no project label required).
+  if (registry.length === 0) {
+    if (resolveSecretAccess(roles, folderName, null) !== "rw") {
+      return NextResponse.json(
+        { error: "Недостаточно прав. Требуется доступ на запись." },
+        { status: 403 }
+      );
+    }
+    return null;
+  }
+
+  const project = normalizeProject(labels, registry);
+  if (!project) {
+    return NextResponse.json(
+      {
+        error:
+          "У секрета должна быть метка project из списка разрешённых проектов.",
+      },
+      { status: 400 }
+    );
+  }
+
+  if (resolveSecretAccess(roles, folderName, project) !== "rw") {
+    return NextResponse.json(
+      { error: "Недостаточно прав для создания секрета в этом проекте." },
+      { status: 403 }
+    );
+  }
+  return null;
+}
+
+/**
+ * Check access for a secret (by secretId), resolving its folder and `project`
+ * label. Fails closed if the secret cannot be fetched.
  */
 export async function requireSecretAccess(
   secretId: string,
@@ -160,26 +239,113 @@ export async function requireSecretAccess(
   const roles = await getKeycloakRoles();
   if (isAdmin(roles)) return null;
 
+  let secret: Secret;
   try {
-    const secret = await getSecret(secretId);
-    return requireFolderAccess(secret.folderId, requiredAccess);
+    secret = await getSecret(secretId);
   } catch {
     // Fail closed: if we cannot verify access, deny rather than allow.
-    // The actual API call below would likely fail too, but we must not skip RBAC silently.
     return NextResponse.json(
       { error: "Не удалось проверить доступ к секрету" },
       { status: 403 }
     );
   }
+
+  const folderName = await getFolderName(secret.folderId);
+  if (!folderName) {
+    return NextResponse.json({ error: "Каталог не найден" }, { status: 404 });
+  }
+
+  const project = normalizeProject(secret.labels, getProjectRegistry());
+  const access = resolveSecretAccess(roles, folderName, project);
+
+  if (!access) {
+    return NextResponse.json(
+      { error: "Нет доступа к этому секрету" },
+      { status: 403 }
+    );
+  }
+  if (requiredAccess === "rw" && access === "ro") {
+    return NextResponse.json(
+      { error: "Недостаточно прав. Требуется доступ на запись." },
+      { status: 403 }
+    );
+  }
+  return null;
+}
+
+/**
+ * Access check for updating a secret. Requires rw on the secret as it currently
+ * is, AND — when the update changes the `project` label — rw on the resulting
+ * project too. This prevents a user from moving a secret into a project (or out
+ * to "no project") they have no write access to.
+ */
+export async function requireUpdateAccess(
+  secretId: string,
+  body: UpdateSecretRequest
+): Promise<NextResponse | null> {
+  const mode = await getAuthMode();
+  if (mode === "oauth") return null;
+  if (mode !== "keycloak") {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  const roles = await getKeycloakRoles();
+  if (isAdmin(roles)) return null;
+
+  let secret: Secret;
+  try {
+    secret = await getSecret(secretId);
+  } catch {
+    return NextResponse.json(
+      { error: "Не удалось проверить доступ к секрету" },
+      { status: 403 }
+    );
+  }
+
+  const folderName = await getFolderName(secret.folderId);
+  if (!folderName) {
+    return NextResponse.json({ error: "Каталог не найден" }, { status: 404 });
+  }
+
+  const registry = getProjectRegistry();
+  const resolve = makeSecretAccessResolver(roles, folderName);
+
+  // rw on the secret in its current project (null project = folder-wide).
+  const currentProject = normalizeProject(secret.labels, registry);
+  if (resolve(currentProject) !== "rw") {
+    return NextResponse.json(
+      { error: "Недостаточно прав. Требуется доступ на запись." },
+      { status: 403 }
+    );
+  }
+
+  // If the labels are being changed, require rw on the destination project too.
+  const touchesLabels =
+    body.labels !== undefined ||
+    (body.updateMask ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .includes("labels");
+
+  if (touchesLabels && registry.length > 0) {
+    const nextProject = normalizeProject(body.labels, registry);
+    if (resolve(nextProject) !== "rw") {
+      return NextResponse.json(
+        { error: "Недостаточно прав для переноса секрета в этот проект." },
+        { status: 403 }
+      );
+    }
+  }
+  return null;
 }
 
 /**
  * For Keycloak users: filter folders list to only those they have access to.
  * For OAuth users: return all folders as-is.
  */
-export async function filterFoldersByAccess(
-  folders: Array<{ id: string; name: string; [key: string]: unknown }>
-): Promise<Array<{ id: string; name: string; access?: FolderAccess; [key: string]: unknown }>> {
+export async function filterFoldersByAccess<T extends { id: string; name: string }>(
+  folders: T[]
+): Promise<Array<T & { access?: FolderAccess }>> {
   const mode = await getAuthMode();
   if (mode === "oauth") return folders;
   if (mode !== "keycloak") return [];
@@ -189,10 +355,8 @@ export async function filterFoldersByAccess(
     return folders.map((f) => ({ ...f, access: "rw" as const }));
   }
 
-  const permissions = parseFolderPermissions(roles);
-  const permMap = new Map(permissions.map((p) => [p.folderName, p.access]));
-
+  // Include folders the user can reach via folder-wide OR project-level roles.
   return folders
-    .filter((f) => permMap.has(f.name))
-    .map((f) => ({ ...f, access: permMap.get(f.name) }));
+    .map((f) => ({ ...f, access: folderTopAccess(roles, f.name) ?? undefined }))
+    .filter((f) => f.access !== undefined);
 }

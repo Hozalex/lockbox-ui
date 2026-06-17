@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { FolderSelector } from "@/components/folder-selector";
 import type { CloneSecretData } from "@/lib/types";
 import { NAME_REGEX, validateKeys } from "@/lib/validation";
+import { PROJECT_LABEL_KEY } from "@/lib/rbac";
 
 interface KeyValue {
   key: string;
@@ -27,12 +28,26 @@ interface LabelEntry {
   value: string;
 }
 
+// Each folder has a KMS key for the kuber cluster (named `k8s-kms-key-...`) —
+// default to it. Falls back to the first available key if the name differs.
+const CLUSTER_KEY_RE = /^k8s-kms-key/i;
+function pickDefaultKmsKey(keys: Array<{ id: string; name: string }>): string {
+  const cluster = keys.find((k) => CLUSTER_KEY_RE.test(k.name || ""));
+  return (cluster ?? keys[0])?.id ?? "";
+}
+
 interface SecretCreateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   folderId: string;
   onSuccess: (newSecretId?: string) => void;
   initialData?: CloneSecretData;
+  /** Projects the user can create in (registry names). */
+  writableProjects?: string[];
+  /** Pre-selected project (from the active tab). */
+  presetProject?: string | null;
+  /** Whether a project must be chosen (Keycloak mode). */
+  projectRequired?: boolean;
 }
 
 export function SecretCreateDialog({
@@ -41,6 +56,9 @@ export function SecretCreateDialog({
   folderId,
   onSuccess,
   initialData,
+  writableProjects = [],
+  presetProject = null,
+  projectRequired = false,
 }: SecretCreateDialogProps) {
   const isCloneMode = !!initialData;
 
@@ -50,6 +68,7 @@ export function SecretCreateDialog({
   const [deletionProtection, setDeletionProtection] = useState(false);
   const [entries, setEntries] = useState<KeyValue[]>([{ key: "", value: "" }]);
   const [labels, setLabels] = useState<LabelEntry[]>([]);
+  const [project, setProject] = useState<string>("");
   const [jsonMode, setJsonMode] = useState(false);
   const [jsonInput, setJsonInput] = useState("");
   const [saving, setSaving] = useState(false);
@@ -74,11 +93,14 @@ export function SecretCreateDialog({
       setDescription(initialData.description);
       setKmsKeyId(initialData.kmsKeyId || "");
       setDeletionProtection(initialData.deletionProtection);
+      // The project label is managed by the dedicated control, not the freeform list.
+      setProject(
+        presetProject ?? initialData.labels?.[PROJECT_LABEL_KEY] ?? ""
+      );
       setLabels(
-        Object.entries(initialData.labels || {}).map(([key, value]) => ({
-          key,
-          value,
-        }))
+        Object.entries(initialData.labels || {})
+          .filter(([key]) => key !== PROJECT_LABEL_KEY)
+          .map(([key, value]) => ({ key, value }))
       );
       const mappedEntries =
         initialData.entries.length > 0
@@ -108,13 +130,14 @@ export function SecretCreateDialog({
       setDeletionProtection(false);
       setEntries([{ key: "", value: "" }]);
       setLabels([]);
+      setProject(presetProject ?? "");
       setTargetFolderId(folderId);
       setJsonInput("");
       setJsonMode(false);
     }
     setError(null);
     setSaving(false);
-  }, [open, initialData, folderId]);
+  }, [open, initialData, folderId, presetProject]);
 
   // Sync targetFolderId when folderId prop changes (non-clone mode)
   useEffect(() => {
@@ -146,6 +169,9 @@ export function SecretCreateDialog({
             setKmsCustom(true);
           } else {
             setKmsCustom(false);
+            // Pre-select the cluster KMS key, unless the user already picked one.
+            const def = pickDefaultKmsKey(keys);
+            if (def) setKmsKeyId((prev) => prev || def);
           }
         })
         .catch(() => setKmsCustom(true))
@@ -170,6 +196,11 @@ export function SecretCreateDialog({
 
     if (name.trim() && !NAME_REGEX.test(name.trim())) {
       setError("Невалидное имя: допустимы только латиница, цифры, _, -, .");
+      return;
+    }
+
+    if (projectRequired && !project) {
+      setError("Выберите проект для секрета.");
       return;
     }
 
@@ -204,8 +235,9 @@ export function SecretCreateDialog({
 
     const labelsMap: Record<string, string> = {};
     labels.forEach((l) => {
-      if (l.key.trim()) labelsMap[l.key] = l.value;
+      if (l.key.trim() && l.key !== PROJECT_LABEL_KEY) labelsMap[l.key] = l.value;
     });
+    if (project) labelsMap[PROJECT_LABEL_KEY] = project;
 
     try {
       const res = await fetch("/api/secrets", {
@@ -262,6 +294,35 @@ export function SecretCreateDialog({
                   onSelect={(id) => setTargetFolderId(id)}
                 />
               </div>
+            </div>
+          )}
+
+          {(writableProjects.length > 0 || project) && (
+            <div>
+              <Label htmlFor="project">
+                Проект{projectRequired ? " *" : ""}
+              </Label>
+              {writableProjects.length > 0 ? (
+                <select
+                  id="project"
+                  className="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs"
+                  value={project}
+                  onChange={(e) => setProject(e.target.value)}
+                >
+                  <option value="">
+                    {projectRequired ? "Выберите проект..." : "Без проекта"}
+                  </option>
+                  {Array.from(
+                    new Set([...(project ? [project] : []), ...writableProjects])
+                  ).map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className="mt-1 text-sm text-muted-foreground">{project}</p>
+              )}
             </div>
           )}
 

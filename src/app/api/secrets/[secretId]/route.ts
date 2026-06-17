@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSecret, updateSecret, deleteSecret } from "@/lib/yc-api";
 import { log } from "@/lib/logger";
-import { apiErrorResponse } from "@/lib/api-error";
-import { validateYCResourceId } from "@/lib/validation";
-import { requireSecretAccess } from "@/lib/api-rbac";
+import {
+  apiErrorResponse,
+  readJsonBody,
+  validateResourceIdResponse,
+} from "@/lib/api-error";
+import {
+  requireSecretAccess,
+  requireUpdateAccess,
+  getFolderName,
+} from "@/lib/api-rbac";
 import type { UpdateSecretRequest } from "@/lib/types";
 
 export async function GET(
@@ -11,10 +18,8 @@ export async function GET(
   { params }: { params: Promise<{ secretId: string }> }
 ) {
   const { secretId } = await params;
-  const idError = validateYCResourceId(secretId, "secretId");
-  if (idError) {
-    return NextResponse.json({ error: idError }, { status: 400 });
-  }
+  const idError = validateResourceIdResponse(secretId, "secretId");
+  if (idError) return idError;
 
   // RBAC: require at least ro
   const denied = await requireSecretAccess(secretId, "ro");
@@ -22,7 +27,10 @@ export async function GET(
 
   try {
     const data = await getSecret(secretId);
-    return NextResponse.json(data);
+    // Attach the folder name so the client can resolve project-level access
+    // against the secret's ACTUAL folder (not the currently selected one).
+    const folderName = await getFolderName(data.folderId);
+    return NextResponse.json({ ...data, folderName: folderName ?? undefined });
   } catch (e) {
     return apiErrorResponse(e, `GET /api/secrets/${secretId}`);
   }
@@ -33,17 +41,18 @@ export async function PATCH(
   { params }: { params: Promise<{ secretId: string }> }
 ) {
   const { secretId } = await params;
-  const idError = validateYCResourceId(secretId, "secretId");
-  if (idError) {
-    return NextResponse.json({ error: idError }, { status: 400 });
-  }
+  const idError = validateResourceIdResponse(secretId, "secretId");
+  if (idError) return idError;
 
-  // RBAC: require rw to update
-  const denied = await requireSecretAccess(secretId, "rw");
+  const parsed = await readJsonBody<UpdateSecretRequest>(request);
+  if ("response" in parsed) return parsed.response;
+  const { data: body } = parsed;
+
+  // RBAC: require rw on the secret, and (if labels change) rw on the new project
+  const denied = await requireUpdateAccess(secretId, body);
   if (denied) return denied;
 
   try {
-    const body: UpdateSecretRequest = await request.json();
     const data = await updateSecret(secretId, body);
     log.info(`Secret updated: ${secretId}`);
     return NextResponse.json(data);
@@ -57,10 +66,8 @@ export async function DELETE(
   { params }: { params: Promise<{ secretId: string }> }
 ) {
   const { secretId } = await params;
-  const idError = validateYCResourceId(secretId, "secretId");
-  if (idError) {
-    return NextResponse.json({ error: idError }, { status: 400 });
-  }
+  const idError = validateResourceIdResponse(secretId, "secretId");
+  if (idError) return idError;
 
   // RBAC: require rw to delete
   const denied = await requireSecretAccess(secretId, "rw");

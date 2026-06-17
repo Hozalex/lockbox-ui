@@ -4,8 +4,11 @@ import {
   cancelVersionDestruction,
 } from "@/lib/yc-api";
 import { log } from "@/lib/logger";
-import { apiErrorResponse } from "@/lib/api-error";
-import { validateYCResourceId } from "@/lib/validation";
+import {
+  apiErrorResponse,
+  readJsonBody,
+  validateResourceIdResponse,
+} from "@/lib/api-error";
 import { requireSecretAccess } from "@/lib/api-rbac";
 
 export async function POST(
@@ -16,21 +19,19 @@ export async function POST(
 ) {
   const { secretId, versionId } = await params;
 
-  const secretIdError = validateYCResourceId(secretId, "secretId");
-  if (secretIdError) {
-    return NextResponse.json({ error: secretIdError }, { status: 400 });
-  }
-  const versionIdError = validateYCResourceId(versionId, "versionId");
-  if (versionIdError) {
-    return NextResponse.json({ error: versionIdError }, { status: 400 });
-  }
+  const secretIdError = validateResourceIdResponse(secretId, "secretId");
+  if (secretIdError) return secretIdError;
+  const versionIdError = validateResourceIdResponse(versionId, "versionId");
+  if (versionIdError) return versionIdError;
 
   // RBAC: require rw to destroy version
   const denied = await requireSecretAccess(secretId, "rw");
   if (denied) return denied;
 
   try {
-    const body = await request.json();
+    const parsed = await readJsonBody<{ pendingPeriod?: string }>(request);
+    if ("response" in parsed) return parsed.response;
+    const { data: body } = parsed;
     const pendingPeriod = body.pendingPeriod as string | undefined;
 
     const data = await scheduleVersionDestruction(secretId, {
@@ -52,14 +53,10 @@ export async function DELETE(
 ) {
   const { secretId, versionId } = await params;
 
-  const secretIdError = validateYCResourceId(secretId, "secretId");
-  if (secretIdError) {
-    return NextResponse.json({ error: secretIdError }, { status: 400 });
-  }
-  const versionIdError = validateYCResourceId(versionId, "versionId");
-  if (versionIdError) {
-    return NextResponse.json({ error: versionIdError }, { status: 400 });
-  }
+  const secretIdError = validateResourceIdResponse(secretId, "secretId");
+  if (secretIdError) return secretIdError;
+  const versionIdError = validateResourceIdResponse(versionId, "versionId");
+  if (versionIdError) return versionIdError;
 
   // RBAC: require rw to cancel destruction
   const denied = await requireSecretAccess(secretId, "rw");

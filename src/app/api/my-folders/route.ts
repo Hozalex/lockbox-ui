@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { listClouds, listFolders, getFolder } from "@/lib/yc-api";
-import { isAdmin, parseFolderPermissions } from "@/lib/rbac";
+import {
+  isAdmin,
+  folderHasAnyAccess,
+  hasFolderWideAccess,
+  folderTopAccess,
+} from "@/lib/rbac";
+import { getProjectRegistry } from "@/lib/projects";
 import { apiErrorResponse } from "@/lib/api-error";
 import { validateYCResourceId } from "@/lib/validation";
 import { cookies } from "next/headers";
@@ -41,14 +47,17 @@ export async function GET(request: NextRequest) {
       admin = isAdmin(roles);
     }
 
-    // Build permitted folder name set for per-folder Keycloak users
-    const permMap = new Map<string, string>(); // folderName → access
-    if (!isOAuth && !admin) {
-      const perms = parseFolderPermissions(roles);
-      for (const p of perms) {
-        permMap.set(p.folderName, p.access);
-      }
-    }
+    // A non-admin Keycloak user can reach a folder via a folder-wide role OR a
+    // project-level role inside it. When the project registry is empty the
+    // feature is off, so only folder-wide roles count (keeps the selector in
+    // sync with requireFolderViewAccess, which 403s project-only users then).
+    const registryEmpty = getProjectRegistry().length === 0;
+    const allowFolder = (name: string): string | null => {
+      const reachable = registryEmpty
+        ? hasFolderWideAccess(roles, name)
+        : folderHasAnyAccess(roles, name);
+      return reachable ? (folderTopAccess(roles, name) ?? null) : null;
+    };
 
     const seen = new Set<string>(); // deduplicate by folder id
     const allFolders: FolderEntry[] = [];
@@ -69,8 +78,9 @@ export async function GET(request: NextRequest) {
         for (const f of foldersData.folders || []) {
           if (isOAuth || admin) {
             addFolder({ id: f.id, name: f.name, cloudId: f.cloudId, access: admin ? "rw" : undefined });
-          } else if (permMap.has(f.name)) {
-            addFolder({ id: f.id, name: f.name, cloudId: f.cloudId, access: permMap.get(f.name) });
+          } else {
+            const access = allowFolder(f.name);
+            if (access) addFolder({ id: f.id, name: f.name, cloudId: f.cloudId, access });
           }
         }
       }
@@ -94,8 +104,9 @@ export async function GET(request: NextRequest) {
 
         if (isOAuth || admin) {
           addFolder({ id: f.id, name: f.name, access: admin ? "rw" : undefined });
-        } else if (permMap.has(f.name)) {
-          addFolder({ id: f.id, name: f.name, access: permMap.get(f.name) });
+        } else {
+          const access = allowFolder(f.name);
+          if (access) addFolder({ id: f.id, name: f.name, access });
         }
         // If user doesn't have access to this folder, it's silently skipped
       } catch {

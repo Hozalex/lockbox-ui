@@ -15,7 +15,7 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Nonce is injected by middleware via x-nonce request header.
+  // Nonce is injected by the proxy via x-nonce request header.
   // It must be passed to every inline script, otherwise CSP blocks execution.
   const nonce = (await headers()).get("x-nonce") ?? undefined;
 

@@ -19,6 +19,8 @@ interface AuthContextType {
   /** Keycloak roles (lockbox:*). Empty for OAuth mode. */
   roles: string[];
   keycloakEnabled: boolean;
+  /** Valid project names from the server registry (LOCKBOX_PROJECTS). */
+  projects: string[];
   /** OAuth login (paste token). */
   login: (token: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
@@ -30,6 +32,7 @@ const AuthContext = createContext<AuthContextType>({
   authMode: null,
   roles: [],
   keycloakEnabled: false,
+  projects: [],
   login: async () => ({ ok: false }),
   logout: async () => {},
 });
@@ -44,12 +47,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authMode, setAuthMode] = useState<AuthMode>(null);
   const [roles, setRoles] = useState<string[]>([]);
   const [keycloakEnabled, setKeycloakEnabled] = useState(false);
+  const [projects, setProjects] = useState<string[]>([]);
 
-  // Load app config (keycloakEnabled flag)
+  // Load app config (keycloakEnabled flag, project registry)
   useEffect(() => {
     fetch("/api/config")
       .then((r) => r.json())
-      .then((data) => setKeycloakEnabled(!!data.keycloakEnabled))
+      .then((data) => {
+        setKeycloakEnabled(!!data.keycloakEnabled);
+        setProjects(Array.isArray(data.projects) ? data.projects : []);
+      })
       .catch(() => {});
   }, []);
 
@@ -133,10 +140,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authMode,
       roles,
       keycloakEnabled,
+      projects,
       login,
       logout,
     }),
-    [authenticated, loading, authMode, roles, keycloakEnabled, login, logout]
+    [
+      authenticated,
+      loading,
+      authMode,
+      roles,
+      keycloakEnabled,
+      projects,
+      login,
+      logout,
+    ]
   );
 
   return (

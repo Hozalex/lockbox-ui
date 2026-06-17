@@ -35,6 +35,9 @@ import { ValueCell } from "@/components/value-cell";
 import { VersionCreateDialog } from "@/components/version-create-dialog";
 import { SecretCreateDialog } from "@/components/secret-create-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/components/session-provider";
+import { useProjectAccess } from "@/hooks/useFolderAccess";
+import { normalizeProject } from "@/lib/rbac";
 import type { Secret, PayloadEntry, SecretVersion } from "@/lib/types";
 
 function isValidSecret(data: unknown): data is Secret {
@@ -48,11 +51,12 @@ function isValidSecret(data: unknown): data is Secret {
 
 interface SecretDetailProps {
   secretId: string;
-  canWrite?: boolean;
+  folderName?: string | null;
 }
 
-export function SecretDetail({ secretId, canWrite = true }: SecretDetailProps) {
+export function SecretDetail({ secretId, folderName = null }: SecretDetailProps) {
   const router = useRouter();
+  const { projects } = useAuth();
   const [secret, setSecret] = useState<Secret | null>(null);
   const [entries, setEntries] = useState<PayloadEntry[]>([]);
   const [versions, setVersions] = useState<SecretVersion[]>([]);
@@ -68,6 +72,16 @@ export function SecretDetail({ secretId, canWrite = true }: SecretDetailProps) {
   const [conflictDialog, setConflictDialog] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showCloneDialog, setShowCloneDialog] = useState(false);
+
+  // Write access depends on the secret's project (intra-folder RBAC).
+  // Resolve against the secret's OWN folder (from the API), falling back to the
+  // currently selected folder only while the secret is still loading.
+  const secretProject = useMemo(
+    () => (secret ? normalizeProject(secret.labels, projects) : null),
+    [secret, projects]
+  );
+  const access = useProjectAccess(secret?.folderName ?? folderName, secretProject);
+  const canWrite = access === "full" || access === "rw";
 
   // Memoize the JSON representation of entries to avoid recomputing it on every render
   const entriesJson = useMemo(
