@@ -1,3 +1,15 @@
+import type {
+  AddVersionRequest,
+  Cloud,
+  CreateSecretRequest,
+  Folder,
+  Operation,
+  Payload,
+  ScheduleVersionDestructionRequest,
+  Secret,
+  SecretVersion,
+  UpdateSecretRequest,
+} from "@/lib/types";
 import { getIamToken } from "@/lib/auth";
 import { log } from "@/lib/logger";
 
@@ -77,14 +89,21 @@ async function request<T>(
     return {} as T;
   }
   log.debug(`${method} ${url} → ${res.status}`);
-  return JSON.parse(text);
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new YCApiError(
+      res.status,
+      `YC API returned invalid JSON for ${method} ${path}`
+    );
+  }
 }
 
 // Resource Manager
 export function listClouds(pageSize = 100, pageToken?: string) {
   const params = new URLSearchParams({ pageSize: String(pageSize) });
   if (pageToken) params.set("pageToken", pageToken);
-  return request<{ clouds: Array<{ id: string; name: string; description: string; createdAt: string }>; nextPageToken?: string }>(
+  return request<{ clouds: Cloud[]; nextPageToken?: string }>(
     RESOURCE_MANAGER_API,
     `/clouds?${params}`,
     {},
@@ -93,7 +112,7 @@ export function listClouds(pageSize = 100, pageToken?: string) {
 }
 
 export function getFolder(folderId: string) {
-  return request<{ id: string; cloudId: string; name: string; description: string; createdAt: string; status: string }>(
+  return request<Folder>(
     RESOURCE_MANAGER_API,
     `/folders/${folderId}`
   );
@@ -109,7 +128,7 @@ export function listFolders(
     pageSize: String(pageSize),
   });
   if (pageToken) params.set("pageToken", pageToken);
-  return request<{ folders: Array<{ id: string; cloudId: string; name: string; description: string; createdAt: string; status: string }>; nextPageToken?: string }>(
+  return request<{ folders: Folder[]; nextPageToken?: string }>(
     RESOURCE_MANAGER_API,
     `/folders?${params}`,
     {},
@@ -128,7 +147,7 @@ export function listSecrets(
     pageSize: String(pageSize),
   });
   if (pageToken) params.set("pageToken", pageToken);
-  return request<{ secrets: import("./types").Secret[]; nextPageToken?: string }>(
+  return request<{ secrets: Secret[]; nextPageToken?: string }>(
     LOCKBOX_API,
     `/secrets?${params}`,
     {},
@@ -137,14 +156,14 @@ export function listSecrets(
 }
 
 export function getSecret(secretId: string) {
-  return request<import("./types").Secret>(
+  return request<Secret>(
     LOCKBOX_API,
     `/secrets/${secretId}`
   );
 }
 
-export function createSecret(body: import("./types").CreateSecretRequest) {
-  return request<import("./types").Operation>(LOCKBOX_API, "/secrets", {
+export function createSecret(body: CreateSecretRequest) {
+  return request<Operation>(LOCKBOX_API, "/secrets", {
     method: "POST",
     body: JSON.stringify(body),
   });
@@ -152,9 +171,9 @@ export function createSecret(body: import("./types").CreateSecretRequest) {
 
 export function updateSecret(
   secretId: string,
-  body: import("./types").UpdateSecretRequest
+  body: UpdateSecretRequest
 ) {
-  return request<import("./types").Operation>(
+  return request<Operation>(
     LOCKBOX_API,
     `/secrets/${secretId}`,
     {
@@ -165,7 +184,7 @@ export function updateSecret(
 }
 
 export function deleteSecret(secretId: string) {
-  return request<import("./types").Operation>(
+  return request<Operation>(
     LOCKBOX_API,
     `/secrets/${secretId}`,
     { method: "DELETE" }
@@ -177,7 +196,7 @@ export function getPayload(secretId: string, versionId?: string) {
   const params = versionId
     ? `?versionId=${encodeURIComponent(versionId)}`
     : "";
-  return request<import("./types").Payload>(
+  return request<Payload>(
     PAYLOAD_API,
     `/secrets/${secretId}/payload${params}`
   );
@@ -191,7 +210,7 @@ export function listVersions(
 ) {
   const params = new URLSearchParams({ pageSize: String(pageSize) });
   if (pageToken) params.set("pageToken", pageToken);
-  return request<{ versions: import("./types").SecretVersion[]; nextPageToken?: string }>(
+  return request<{ versions: SecretVersion[]; nextPageToken?: string }>(
     LOCKBOX_API,
     `/secrets/${secretId}/versions?${params}`,
     {},
@@ -201,9 +220,9 @@ export function listVersions(
 
 export function addVersion(
   secretId: string,
-  body: import("./types").AddVersionRequest
+  body: AddVersionRequest
 ) {
-  return request<import("./types").Operation>(
+  return request<Operation>(
     LOCKBOX_API,
     `/secrets/${secretId}:addVersion`,
     {
@@ -215,9 +234,9 @@ export function addVersion(
 
 export function scheduleVersionDestruction(
   secretId: string,
-  body: import("./types").ScheduleVersionDestructionRequest
+  body: ScheduleVersionDestructionRequest
 ) {
-  return request<import("./types").Operation>(
+  return request<Operation>(
     LOCKBOX_API,
     `/secrets/${secretId}:scheduleVersionDestruction`,
     {
@@ -231,7 +250,7 @@ export function cancelVersionDestruction(
   secretId: string,
   versionId: string
 ) {
-  return request<import("./types").Operation>(
+  return request<Operation>(
     LOCKBOX_API,
     `/secrets/${secretId}:cancelVersionDestruction`,
     {

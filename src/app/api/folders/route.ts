@@ -1,22 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listFolders } from "@/lib/yc-api";
-import { apiErrorResponse } from "@/lib/api-error";
-import { validateYCResourceId } from "@/lib/validation";
+import {
+  apiErrorResponse,
+  badRequest,
+  validateResourceIdResponse,
+} from "@/lib/api-error";
 import { filterFoldersByAccess } from "@/lib/api-rbac";
 
 export async function GET(request: NextRequest) {
   const cloudId = request.nextUrl.searchParams.get("cloudId");
   if (!cloudId) {
-    return NextResponse.json(
-      { error: "cloudId is required" },
-      { status: 400 }
-    );
+    return badRequest("cloudId is required");
   }
 
-  const cloudIdError = validateYCResourceId(cloudId, "cloudId");
-  if (cloudIdError) {
-    return NextResponse.json({ error: cloudIdError }, { status: 400 });
-  }
+  const cloudIdError = validateResourceIdResponse(cloudId, "cloudId");
+  if (cloudIdError) return cloudIdError;
 
   try {
     const data = await listFolders(cloudId);

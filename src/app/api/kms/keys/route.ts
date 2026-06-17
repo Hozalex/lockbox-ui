@@ -1,22 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listKmsKeys } from "@/lib/yc-api";
 import { log } from "@/lib/logger";
-import { validateYCResourceId } from "@/lib/validation";
+import {
+  badRequest,
+  validateResourceIdResponse,
+} from "@/lib/api-error";
 import { requireFolderViewAccess } from "@/lib/api-rbac";
 
 export async function GET(request: NextRequest) {
   const folderId = request.nextUrl.searchParams.get("folderId");
   if (!folderId) {
-    return NextResponse.json(
-      { error: "folderId is required" },
-      { status: 400 }
-    );
+    return badRequest("folderId is required");
   }
 
-  const folderIdError = validateYCResourceId(folderId, "folderId");
-  if (folderIdError) {
-    return NextResponse.json({ error: folderIdError }, { status: 400 });
-  }
+  const folderIdError = validateResourceIdResponse(folderId, "folderId");
+  if (folderIdError) return folderIdError;
 
   // RBAC: require some access in the folder to list KMS keys
   const denied = await requireFolderViewAccess(folderId);

@@ -343,9 +343,9 @@ export async function requireUpdateAccess(
  * For Keycloak users: filter folders list to only those they have access to.
  * For OAuth users: return all folders as-is.
  */
-export async function filterFoldersByAccess(
-  folders: Array<{ id: string; name: string; [key: string]: unknown }>
-): Promise<Array<{ id: string; name: string; access?: FolderAccess; [key: string]: unknown }>> {
+export async function filterFoldersByAccess<T extends { id: string; name: string }>(
+  folders: T[]
+): Promise<Array<T & { access?: FolderAccess }>> {
   const mode = await getAuthMode();
   if (mode === "oauth") return folders;
   if (mode !== "keycloak") return [];

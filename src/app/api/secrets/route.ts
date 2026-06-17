@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listSecrets, createSecret } from "@/lib/yc-api";
 import { log } from "@/lib/logger";
-import { apiErrorResponse } from "@/lib/api-error";
-import { validateYCResourceId, validateSecretName } from "@/lib/validation";
+import {
+  apiErrorResponse,
+  badRequest,
+  readJsonBody,
+  validateResourceIdResponse,
+} from "@/lib/api-error";
+import { validateSecretName } from "@/lib/validation";
 import {
   requireFolderViewAccess,
   filterSecretsByProjectAccess,
@@ -13,16 +18,11 @@ import type { CreateSecretRequest } from "@/lib/types";
 export async function GET(request: NextRequest) {
   const folderId = request.nextUrl.searchParams.get("folderId");
   if (!folderId) {
-    return NextResponse.json(
-      { error: "folderId is required" },
-      { status: 400 }
-    );
+    return badRequest("folderId is required");
   }
 
-  const folderIdError = validateYCResourceId(folderId, "folderId");
-  if (folderIdError) {
-    return NextResponse.json({ error: folderIdError }, { status: 400 });
-  }
+  const folderIdError = validateResourceIdResponse(folderId, "folderId");
+  if (folderIdError) return folderIdError;
 
   // RBAC: user must have some access in the folder (folder-wide or a project)
   const denied = await requireFolderViewAccess(folderId);
@@ -46,22 +46,20 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body: CreateSecretRequest = await request.json();
+    const parsed = await readJsonBody<CreateSecretRequest>(request);
+    if ("response" in parsed) return parsed.response;
+    const { data: body } = parsed;
+
     if (!body.folderId || !body.name) {
-      return NextResponse.json(
-        { error: "folderId and name are required" },
-        { status: 400 }
-      );
+      return badRequest("folderId and name are required");
     }
 
-    const folderIdError = validateYCResourceId(body.folderId, "folderId");
-    if (folderIdError) {
-      return NextResponse.json({ error: folderIdError }, { status: 400 });
-    }
+    const folderIdError = validateResourceIdResponse(body.folderId, "folderId");
+    if (folderIdError) return folderIdError;
 
     const nameError = validateSecretName(body.name);
     if (nameError) {
-      return NextResponse.json({ error: nameError }, { status: 400 });
+      return badRequest(nameError);
     }
 
     // RBAC: require rw on the target project (and a valid project label)

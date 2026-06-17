@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSecret, updateSecret, deleteSecret } from "@/lib/yc-api";
 import { log } from "@/lib/logger";
-import { apiErrorResponse } from "@/lib/api-error";
-import { validateYCResourceId } from "@/lib/validation";
+import {
+  apiErrorResponse,
+  readJsonBody,
+  validateResourceIdResponse,
+} from "@/lib/api-error";
 import {
   requireSecretAccess,
   requireUpdateAccess,
@@ -15,10 +18,8 @@ export async function GET(
   { params }: { params: Promise<{ secretId: string }> }
 ) {
   const { secretId } = await params;
-  const idError = validateYCResourceId(secretId, "secretId");
-  if (idError) {
-    return NextResponse.json({ error: idError }, { status: 400 });
-  }
+  const idError = validateResourceIdResponse(secretId, "secretId");
+  if (idError) return idError;
 
   // RBAC: require at least ro
   const denied = await requireSecretAccess(secretId, "ro");
@@ -40,17 +41,12 @@ export async function PATCH(
   { params }: { params: Promise<{ secretId: string }> }
 ) {
   const { secretId } = await params;
-  const idError = validateYCResourceId(secretId, "secretId");
-  if (idError) {
-    return NextResponse.json({ error: idError }, { status: 400 });
-  }
+  const idError = validateResourceIdResponse(secretId, "secretId");
+  if (idError) return idError;
 
-  let body: UpdateSecretRequest;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Невалидный JSON" }, { status: 400 });
-  }
+  const parsed = await readJsonBody<UpdateSecretRequest>(request);
+  if ("response" in parsed) return parsed.response;
+  const { data: body } = parsed;
 
   // RBAC: require rw on the secret, and (if labels change) rw on the new project
   const denied = await requireUpdateAccess(secretId, body);
@@ -70,10 +66,8 @@ export async function DELETE(
   { params }: { params: Promise<{ secretId: string }> }
 ) {
   const { secretId } = await params;
-  const idError = validateYCResourceId(secretId, "secretId");
-  if (idError) {
-    return NextResponse.json({ error: idError }, { status: 400 });
-  }
+  const idError = validateResourceIdResponse(secretId, "secretId");
+  if (idError) return idError;
 
   // RBAC: require rw to delete
   const denied = await requireSecretAccess(secretId, "rw");

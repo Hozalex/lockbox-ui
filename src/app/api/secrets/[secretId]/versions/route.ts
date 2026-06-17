@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listVersions, addVersion } from "@/lib/yc-api";
 import { log } from "@/lib/logger";
-import { apiErrorResponse } from "@/lib/api-error";
-import { validateYCResourceId } from "@/lib/validation";
+import {
+  apiErrorResponse,
+  readJsonBody,
+  validateResourceIdResponse,
+} from "@/lib/api-error";
 import { requireSecretAccess } from "@/lib/api-rbac";
 import type { AddVersionRequest } from "@/lib/types";
 
@@ -11,10 +14,8 @@ export async function GET(
   { params }: { params: Promise<{ secretId: string }> }
 ) {
   const { secretId } = await params;
-  const idError = validateYCResourceId(secretId, "secretId");
-  if (idError) {
-    return NextResponse.json({ error: idError }, { status: 400 });
-  }
+  const idError = validateResourceIdResponse(secretId, "secretId");
+  if (idError) return idError;
 
   // RBAC: require at least ro to list versions
   const denied = await requireSecretAccess(secretId, "ro");
@@ -36,17 +37,18 @@ export async function POST(
   { params }: { params: Promise<{ secretId: string }> }
 ) {
   const { secretId } = await params;
-  const idError = validateYCResourceId(secretId, "secretId");
-  if (idError) {
-    return NextResponse.json({ error: idError }, { status: 400 });
-  }
+  const idError = validateResourceIdResponse(secretId, "secretId");
+  if (idError) return idError;
 
   // RBAC: require rw to add version
   const denied = await requireSecretAccess(secretId, "rw");
   if (denied) return denied;
 
   try {
-    const body: AddVersionRequest = await request.json();
+    const parsed = await readJsonBody<AddVersionRequest>(request);
+    if ("response" in parsed) return parsed.response;
+    const { data: body } = parsed;
+
     const data = await addVersion(secretId, body);
     log.info(`Version added to secret ${secretId}`);
     return NextResponse.json(data);
