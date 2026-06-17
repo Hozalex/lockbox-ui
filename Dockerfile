@@ -9,7 +9,9 @@ RUN npm ci --only=production
 # Build
 FROM base AS builder
 WORKDIR /app
-ARG BUILD_VERSION=dev
+# Empty by default → next.config falls back to package.json version.
+# Pass --build-arg BUILD_VERSION=$(git describe --tags) to override.
+ARG BUILD_VERSION=
 ENV NEXT_PUBLIC_BUILD_VERSION=$BUILD_VERSION
 COPY package.json package-lock.json ./
 RUN npm ci
