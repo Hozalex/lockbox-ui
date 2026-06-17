@@ -10,8 +10,9 @@ Web UI for managing [Yandex Cloud Lockbox](https://yandex.cloud/ru-kz/docs/lockb
 - Version management: create, rollback, schedule destruction
 - KMS key picker (falls back to manual input if no access)
 - Dark theme (toggle + system preference auto-detect)
+- Secrets grouped into per-project tabs (by `project` label)
 - Dual authentication: Yandex OAuth token + Keycloak OIDC (optional)
-- Per-folder RBAC via Keycloak roles
+- Per-folder **and per-project** RBAC via Keycloak roles
 
 ## Stack
 
@@ -40,16 +41,28 @@ IAM tokens are obtained via a **YC Service Account** authorized key (`YC_SA_AUTH
 
 #### Keycloak Role Format
 
-Roles are assigned in Keycloak and control which folders a user can see:
+Roles are assigned in Keycloak (as **client roles** on the app's client, or realm roles) and control which folders/projects a user can see:
 
 | Role | Access |
 |------|--------|
-| `lockbox:admin` | Read-write access to **all** folders |
-| `lockbox:<folderName>:rw` | Read-write access to the specified folder |
-| `lockbox:<folderName>:ro` | Read-only access to the specified folder |
+| `lockbox:admin` | Read-write to **all** folders and projects |
+| `lockbox:<folder>:rw` | Read-write to a whole folder (all projects + unlabeled secrets) |
+| `lockbox:<folder>:ro` | Read-only to a whole folder |
+| `lockbox:<folder>:<project>:rw` | Read-write to a single project inside a folder |
+| `lockbox:<folder>:<project>:ro` | Read-only to a single project inside a folder |
 
-`<folderName>` must match the YC folder name **exactly** (case-sensitive).  
-Users with no matching role see no folders.
+`<folder>` must match the YC folder name **exactly** (case-sensitive). Effective access for a secret is the **max** of the folder-wide and matching project roles. A user with no matching role sees a clear "No access" message.
+
+See `keycloak-roles.json` for an importable example (client roles, folders `dev/stage/prod`, projects `sample-app/demo-app`).
+
+#### Projects (intra-folder grouping)
+
+A single folder can hold secrets for several projects, grouped by a `project` label (e.g. `project=sample-app`) and surfaced as tabs in the UI. Valid project names come from the `LOCKBOX_PROJECTS` env registry; a label not in the registry — or missing — is treated as "no project" and is visible only to folder-wide / admin users. Enforcement is **server-side**; tabs are cosmetic.
+
+- A project tab is shown even when empty so a user with `rw` on it can create the first secret.
+- Creating a secret injects the active tab's `project` label; moving a secret between projects (changing the label) re-checks `rw` on the destination.
+- **`LOCKBOX_PROJECTS` unset = feature off** — access falls back to folder-wide roles, no project label required (preserves pre-projects behavior).
+- For OAuth users projects are purely cosmetic grouping (YC IAM enforces; all secrets shown).
 
 ---
 
@@ -73,6 +86,7 @@ The SA used for Keycloak mode (`YC_SA_AUTHORIZED_KEY_JSON`) must have the follow
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `LOG_LEVEL` | No | Server log level: `debug`, `info`, `warn`, `error` (default: `info`) |
+| `LOCKBOX_PROJECTS` | No | Comma-separated registry of project names (lowercase), e.g. `sample-app,demo-app`. Enables per-project tabs and RBAC. Unset = feature off (folder-wide RBAC only). |
 | `KEYCLOAK_ISSUER` | No | Keycloak realm URL, e.g. `https://keycloak.example.com/realms/myrealm`. Enables Keycloak mode. |
 | `KEYCLOAK_CLIENT_ID` | If Keycloak | OIDC client ID |
 | `KEYCLOAK_CLIENT_SECRET` | If Keycloak | OIDC client secret |
@@ -130,7 +144,7 @@ src/
 │   ├── api/
 │   │   ├── auth/oauth/         # Yandex OAuth login/logout/check
 │   │   ├── auth/[...nextauth]/ # Keycloak OIDC handlers (next-auth)
-│   │   ├── config/             # Feature flags (keycloakEnabled)
+│   │   ├── config/             # Feature flags (keycloakEnabled, projects registry)
 │   │   ├── clouds/             # List clouds
 │   │   ├── folders/            # List folders (RBAC-filtered for Keycloak)
 │   │   ├── my-folders/         # Flat folder list with role filtering
@@ -150,13 +164,14 @@ src/
 │   ├── theme-toggle
 │   └── value-cell              # Show/hide secret value
 ├── hooks/
-│   ├── useFolderAccess         # Access level for current folder
+│   ├── useFolderAccess         # Folder/project access level + writable projects
 │   ├── useFolderStorage        # localStorage persistence
 │   └── useRequireAuth          # Redirect if not authenticated
 └── lib/
-    ├── api-rbac.ts             # Server-side RBAC helpers
+    ├── api-rbac.ts             # Server-side RBAC helpers (folder + project)
     ├── auth.ts                 # IAM token (OAuth cookie or SA key)
-    ├── rbac.ts                 # Role parsing utilities
+    ├── rbac.ts                 # Role parsing, project resolution, tab computation
+    ├── projects.ts             # Project registry (LOCKBOX_PROJECTS)
     ├── types.ts                # Lockbox API types
     ├── validation.ts           # Input validation
     ├── yc-api.ts               # YC API HTTP client
