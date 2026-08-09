@@ -245,6 +245,30 @@ describe("computeProjectTabs", () => {
     expect(oauth[0]).toMatchObject({ kind: "all", canCreate: true });
   });
 
+  it("admin can create from the 'Все' tab (unlabeled) even with a non-empty registry", () => {
+    const tabs = computeProjectTabs({
+      isOAuth: false,
+      roles: ["lockbox:admin"],
+      folderName: "dev",
+      registry: REGISTRY,
+      secretProjects: [],
+    });
+    const all = tabs.find((t) => t.key === "all");
+    expect(all).toMatchObject({ kind: "all", canCreate: true });
+  });
+
+  it("non-admin folder-wide rw still cannot create unlabeled from 'Все' (registry non-empty)", () => {
+    const tabs = computeProjectTabs({
+      isOAuth: false,
+      roles: ["lockbox:dev:rw"],
+      folderName: "dev",
+      registry: REGISTRY,
+      secretProjects: [],
+    });
+    const all = tabs.find((t) => t.key === "all");
+    expect(all).toMatchObject({ kind: "all", canCreate: false });
+  });
+
   it("no access produces no tabs", () => {
     expect(
       computeProjectTabs({

@@ -5,6 +5,7 @@ import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { useFolderStorage } from "@/hooks/useFolderStorage";
 import { useFolderAccess, useWritableProjects } from "@/hooks/useFolderAccess";
 import { useAuth } from "@/components/session-provider";
+import { isAdmin } from "@/lib/rbac";
 import { Header } from "@/components/header";
 import { SecretsTable } from "@/components/secrets-table";
 import { SecretCreateDialog } from "@/components/secret-create-dialog";
@@ -12,7 +13,7 @@ import { PageLoader } from "@/components/page-loader";
 
 export default function SecretsPage() {
   const { authenticated, loading } = useRequireAuth();
-  const { authMode, projects } = useAuth();
+  const { authMode, projects, roles } = useAuth();
   const { folderId, folderName, setFolder } = useFolderStorage();
   const folderAccess = useFolderAccess(folderName);
   const writableProjects = useWritableProjects(folderName);
@@ -22,7 +23,10 @@ export default function SecretsPage() {
   const canCreate =
     writableProjects.length > 0 ||
     (registryEmpty && (folderAccess === "full" || folderAccess === "rw"));
-  const projectRequired = authMode === "keycloak" && !registryEmpty;
+  // Admins bypass project RBAC and may create unlabeled secrets, so don't force
+  // a project on them.
+  const projectRequired =
+    authMode === "keycloak" && !registryEmpty && !isAdmin(roles);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [createProject, setCreateProject] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);

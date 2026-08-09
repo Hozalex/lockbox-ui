@@ -270,9 +270,11 @@ export function computeProjectTabs(opts: {
       project: null,
       kind: "all",
       access: allAccess,
-      // With no registry, project labels aren't required — allow creating an
-      // unlabeled secret straight from the overview if the user can write.
-      canCreate: registryEmpty && (isOAuth || allAccess === "rw"),
+      // Unlabeled secrets can be created from the overview by admins and OAuth
+      // users (who bypass project RBAC), or by any folder-writer when the
+      // registry is empty (feature off).
+      canCreate:
+        isAdmin(roles) || isOAuth || (registryEmpty && allAccess === "rw"),
     });
   }
 
