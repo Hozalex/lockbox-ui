@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FolderSelector } from "@/components/folder-selector";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { cn } from "@/lib/utils";
+import { getEnvKind, ENV_BORDER_CLASS, ENV_TITLE } from "@/lib/env-accent";
 
 interface HeaderProps {
   folderId: string | null;
@@ -26,8 +28,14 @@ export function Header({ folderId, folderName, onFolderChange, onFolderSelectorL
     }
   };
 
+  // Colour the divider by environment: prod = red, everything else = green.
+  const envKind = getEnvKind(folderName);
+
   return (
-    <header className="border-b bg-background">
+    <header
+      className={cn("border-b-2 bg-background", ENV_BORDER_CLASS[envKind])}
+      title={ENV_TITLE[envKind]}
+    >
       <div className="container mx-auto flex h-14 items-center justify-between px-4">
         <div className="flex items-center gap-4">
           <h1 className="text-lg font-semibold">Lockbox UI</h1>
