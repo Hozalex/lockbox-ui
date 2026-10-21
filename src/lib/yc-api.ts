@@ -3,6 +3,7 @@ import type {
   Cloud,
   CreateSecretRequest,
   Folder,
+  KmsKey,
   Operation,
   Payload,
   ScheduleVersionDestructionRequest,
@@ -271,14 +272,10 @@ export function listKmsKeys(
     pageSize: String(pageSize),
   });
   if (pageToken) params.set("pageToken", pageToken);
-  return request<{
-    keys: Array<{
-      id: string;
-      name: string;
-      description: string;
-      status: string;
-      defaultAlgorithm: string;
-    }>;
-    nextPageToken?: string;
-  }>(KMS_API, `/keys?${params}`, {}, true);
+  return request<{ keys: KmsKey[]; nextPageToken?: string }>(
+    KMS_API,
+    `/keys?${params}`,
+    {},
+    true
+  );
 }

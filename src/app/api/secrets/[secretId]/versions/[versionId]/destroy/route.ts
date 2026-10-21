@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  scheduleVersionDestruction,
-  cancelVersionDestruction,
-} from "@/lib/yc-api";
+import { getSecretsProvider } from "@/lib/providers";
 import { log } from "@/lib/logger";
 import {
   apiErrorResponse,
@@ -34,7 +31,7 @@ export async function POST(
     const { data: body } = parsed;
     const pendingPeriod = body.pendingPeriod as string | undefined;
 
-    const data = await scheduleVersionDestruction(secretId, {
+    const data = await getSecretsProvider().scheduleVersionDestruction(secretId, {
       versionId,
       pendingPeriod,
     });
@@ -63,7 +60,7 @@ export async function DELETE(
   if (denied) return denied;
 
   try {
-    const data = await cancelVersionDestruction(secretId, versionId);
+    const data = await getSecretsProvider().cancelVersionDestruction(secretId, versionId);
     log.info(`Version ${versionId} of secret ${secretId} destruction cancelled`);
     return NextResponse.json(data);
   } catch (e) {

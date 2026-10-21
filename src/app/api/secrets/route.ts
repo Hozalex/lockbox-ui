@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listSecrets, createSecret } from "@/lib/yc-api";
+import { getSecretsProvider } from "@/lib/providers";
 import { log } from "@/lib/logger";
 import {
   apiErrorResponse,
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     request.nextUrl.searchParams.get("pageToken") || undefined;
 
   try {
-    const data = await listSecrets(folderId, 100, pageToken);
+    const data = await getSecretsProvider().listSecrets(folderId, pageToken);
     // Filter to secrets the user may see, based on each secret's project label.
     const secrets = await filterSecretsByProjectAccess(
       folderId,
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     const denied = await requireCreateAccess(body.folderId, body.labels);
     if (denied) return denied;
 
-    const data = await createSecret(body);
+    const data = await getSecretsProvider().createSecret(body);
     log.info(`Secret created: ${body.name} in folder ${body.folderId}`);
     return NextResponse.json(data);
   } catch (e) {

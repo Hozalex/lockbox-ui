@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSecret, updateSecret, deleteSecret } from "@/lib/yc-api";
+import { getSecretsProvider } from "@/lib/providers";
 import { log } from "@/lib/logger";
 import {
   apiErrorResponse,
@@ -26,7 +26,7 @@ export async function GET(
   if (denied) return denied;
 
   try {
-    const data = await getSecret(secretId);
+    const data = await getSecretsProvider().getSecret(secretId);
     // Attach the folder name so the client can resolve project-level access
     // against the secret's ACTUAL folder (not the currently selected one).
     const folderName = await getFolderName(data.folderId);
@@ -53,7 +53,7 @@ export async function PATCH(
   if (denied) return denied;
 
   try {
-    const data = await updateSecret(secretId, body);
+    const data = await getSecretsProvider().updateSecret(secretId, body);
     log.info(`Secret updated: ${secretId}`);
     return NextResponse.json(data);
   } catch (e) {
@@ -74,7 +74,7 @@ export async function DELETE(
   if (denied) return denied;
 
   try {
-    const data = await deleteSecret(secretId);
+    const data = await getSecretsProvider().deleteSecret(secretId);
     log.info(`Secret deleted: ${secretId}`);
     return NextResponse.json(data);
   } catch (e) {

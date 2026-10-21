@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { auth } from "@/auth";
-import { getSecret, listFolders, listClouds, getFolder } from "@/lib/yc-api";
+import { getSecretsProvider } from "@/lib/providers";
 import {
   isAdmin,
   folderHasAnyAccess,
@@ -12,6 +12,7 @@ import {
   normalizeProject,
 } from "@/lib/rbac";
 import { getProjectRegistry } from "@/lib/projects";
+import { tokenLoginEnabled } from "@/lib/providers/id";
 import type { FolderAccess } from "@/lib/rbac";
 import type { Secret, UpdateSecretRequest } from "@/lib/types";
 
@@ -21,7 +22,9 @@ import type { Secret, UpdateSecretRequest } from "@/lib/types";
  */
 async function getAuthMode(): Promise<"oauth" | "keycloak" | null> {
   const cookieStore = await cookies();
-  if (cookieStore.get("oauth_token")?.value) return "oauth";
+  // Token sessions skip lbox RBAC (YC enforces with the user's token) — only
+  // valid for providers with token login; otherwise calls use app credentials.
+  if (tokenLoginEnabled() && cookieStore.get("oauth_token")?.value) return "oauth";
   if (
     cookieStore.get("authjs.session-token")?.value ||
     cookieStore.get("__Secure-authjs.session-token")?.value
@@ -48,12 +51,12 @@ async function refreshFolderCache(): Promise<void> {
   if (Date.now() < folderCacheExpiry && folderNameCache.size > 0) return;
 
   try {
-    const cloudsData = await listClouds();
+    const cloudsData = await getSecretsProvider().listClouds();
     const clouds = cloudsData.clouds || [];
     const newMap = new Map<string, string>();
 
     for (const cloud of clouds) {
-      const foldersData = await listFolders(cloud.id);
+      const foldersData = await getSecretsProvider().listFolders(cloud.id);
       for (const folder of foldersData.folders || []) {
         newMap.set(folder.id, folder.name);
       }
@@ -85,7 +88,7 @@ export async function getFolderName(folderId: string): Promise<string | null> {
 
   // Fallback: direct GET /folders/{id} — works with only folder-level SA permissions
   try {
-    const folder = await getFolder(folderId);
+    const folder = await getSecretsProvider().getFolder(folderId);
     if (folder?.name) {
       folderNameCache.set(folderId, folder.name);
       return folder.name;
@@ -241,7 +244,7 @@ export async function requireSecretAccess(
 
   let secret: Secret;
   try {
-    secret = await getSecret(secretId);
+    secret = await getSecretsProvider().getSecret(secretId);
   } catch {
     // Fail closed: if we cannot verify access, deny rather than allow.
     return NextResponse.json(
@@ -294,7 +297,7 @@ export async function requireUpdateAccess(
 
   let secret: Secret;
   try {
-    secret = await getSecret(secretId);
+    secret = await getSecretsProvider().getSecret(secretId);
   } catch {
     return NextResponse.json(
       { error: "Не удалось проверить доступ к секрету" },

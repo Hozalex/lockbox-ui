@@ -35,11 +35,12 @@ const STATUS_COLORS: Record<string, string> = {
   ACTIVE: "bg-green-100 text-green-800",
   INACTIVE: "bg-gray-100 text-gray-800",
   CREATING: "bg-yellow-100 text-yellow-800",
+  PENDING_DELETION: "bg-orange-100 text-orange-800",
 };
 
 export function SecretsTable({ folderId, folderName, onCreateClick }: SecretsTableProps) {
   const router = useRouter();
-  const { authMode, roles, projects: registry } = useAuth();
+  const { authMode, roles, projects: registry, capabilities } = useAuth();
   const [secrets, setSecrets] = useState<Secret[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -326,7 +327,9 @@ export function SecretsTable({ folderId, folderName, onCreateClick }: SecretsTab
                       : versionCounts[secret.id]}
                 </TableCell>
                 <TableCell>
-                  {secret.currentVersion?.payloadEntryKeys?.length || 0}
+                  {capabilities.keyCountInList
+                    ? secret.currentVersion?.payloadEntryKeys?.length || 0
+                    : "—"}
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
                   {new Date(secret.createdAt).toLocaleDateString("ru-RU")}

@@ -38,6 +38,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/components/session-provider";
 import { useProjectAccess } from "@/hooks/useFolderAccess";
 import { normalizeProject } from "@/lib/rbac";
+import { secretDeletionDays, versionRetentionDays } from "@/lib/provider-ui";
 import type { Secret, PayloadEntry, SecretVersion } from "@/lib/types";
 
 function isValidSecret(data: unknown): data is Secret {
@@ -56,7 +57,7 @@ interface SecretDetailProps {
 
 export function SecretDetail({ secretId, folderName = null }: SecretDetailProps) {
   const router = useRouter();
-  const { projects } = useAuth();
+  const { projects, capabilities, policy } = useAuth();
   const [secret, setSecret] = useState<Secret | null>(null);
   const [entries, setEntries] = useState<PayloadEntry[]>([]);
   const [versions, setVersions] = useState<SecretVersion[]>([]);
@@ -82,6 +83,12 @@ export function SecretDetail({ secretId, folderName = null }: SecretDetailProps)
   );
   const access = useProjectAccess(secret?.folderName ?? folderName, secretProject);
   const canWrite = access === "full" || access === "rw";
+
+  // Provider policy for this secret's folder.
+  const secretFolder = secret?.folderName ?? folderName ?? secret?.folderId;
+  const deletionDays = secretDeletionDays(policy, secretFolder);
+  const retentionDays = versionRetentionDays(policy, secretFolder);
+  const pendingDeletion = secret?.status === "PENDING_DELETION";
 
   // Memoize the JSON representation of entries to avoid recomputing it on every render
   const entriesJson = useMemo(
@@ -232,11 +239,32 @@ export function SecretDetail({ secretId, folderName = null }: SecretDetailProps)
   const handleDelete = async () => {
     setDeleting(true);
     try {
-      await fetch(`/api/secrets/${secretId}`, { method: "DELETE" });
+      const res = await fetch(`/api/secrets/${secretId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
       router.push("/secrets");
     } catch (e) {
-      console.error(e);
+      alert(`Не удалось удалить секрет: ${(e as Error).message}`);
       setDeleting(false);
+    }
+  };
+
+  const [restoring, setRestoring] = useState(false);
+  const handleRestore = async () => {
+    setRestoring(true);
+    try {
+      const res = await fetch(`/api/secrets/${secretId}/restore`, { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      await loadAll();
+    } catch (e) {
+      alert(`Не удалось восстановить секрет: ${(e as Error).message}`);
+    } finally {
+      setRestoring(false);
     }
   };
 
@@ -244,8 +272,17 @@ export function SecretDetail({ secretId, folderName = null }: SecretDetailProps)
     versionId: string,
     pendingPeriod?: string
   ) => {
+    // Without cancel support the action is final — confirm first.
+    if (
+      !capabilities.versionDestructionCancel &&
+      !confirm(
+        `Версия ${versionId} истечёт через ${retentionDays ?? "?"} дн. Отменить это будет нельзя. Продолжить?`
+      )
+    ) {
+      return;
+    }
     try {
-      await fetch(
+      const res = await fetch(
         `/api/secrets/${secretId}/versions/${versionId}/destroy`,
         {
           method: "POST",
@@ -253,6 +290,10 @@ export function SecretDetail({ secretId, folderName = null }: SecretDetailProps)
           body: JSON.stringify({ pendingPeriod }),
         }
       );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || `Ошибка: HTTP ${res.status}`);
+      }
       loadVersions();
     } catch (e) {
       console.error(e);
@@ -423,7 +464,12 @@ export function SecretDetail({ secretId, folderName = null }: SecretDetailProps)
           )}
         </div>
         <div className="flex gap-2">
-          {canWrite && (
+          {canWrite && pendingDeletion && (
+            <Button size="sm" onClick={handleRestore} disabled={restoring}>
+              {restoring ? "Восстановление..." : "Восстановить"}
+            </Button>
+          )}
+          {canWrite && !pendingDeletion && (
             <Button
               size="sm"
               onClick={() => setShowVersionDialog(true)}
@@ -431,7 +477,7 @@ export function SecretDetail({ secretId, folderName = null }: SecretDetailProps)
               Новая версия
             </Button>
           )}
-          {canWrite && (
+          {canWrite && !pendingDeletion && (
             <Button
               variant="outline"
               size="sm"
@@ -440,7 +486,7 @@ export function SecretDetail({ secretId, folderName = null }: SecretDetailProps)
               Клонировать
             </Button>
           )}
-          {canWrite && (
+          {canWrite && !pendingDeletion && (
             <Button
               variant="destructive"
               size="sm"
@@ -470,8 +516,18 @@ export function SecretDetail({ secretId, folderName = null }: SecretDetailProps)
             <div>
               <span className="text-muted-foreground">Статус</span>
               <p>
-                <Badge variant="secondary">{secret.status}</Badge>
+                <Badge
+                  variant={pendingDeletion ? "destructive" : "secondary"}
+                >
+                  {secret.status}
+                </Badge>
               </p>
+              {secret.deletionScheduledAt && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Удаление:{" "}
+                  {new Date(secret.deletionScheduledAt).toLocaleString("ru-RU")}
+                </p>
+              )}
             </div>
             <div>
               <span className="text-muted-foreground">Создан</span>
@@ -617,7 +673,7 @@ export function SecretDetail({ secretId, folderName = null }: SecretDetailProps)
               {versions.map((v) => (
                 <TableRow key={v.id}>
                   <TableCell className="font-mono text-xs">
-                    {v.id.substring(0, 12)}...
+                    {v.id.length > 12 ? `${v.id.substring(0, 12)}...` : v.id}
                     {v.id === secret.currentVersion?.id && (
                       <Badge variant="secondary" className="ml-2 text-xs">
                         текущая
@@ -642,7 +698,12 @@ export function SecretDetail({ secretId, folderName = null }: SecretDetailProps)
                     </Badge>
                     {v.destroyAt && (
                       <p className="text-xs text-muted-foreground">
-                        Удаление:{" "}
+                        {v.status === "EXPIRED"
+                          ? "Истекла"
+                          : capabilities.versionDestructionCancel
+                            ? "Удаление"
+                            : "Истекает"}
+                        :{" "}
                         {new Date(v.destroyAt).toLocaleString("ru-RU")}
                       </p>
                     )}
@@ -650,9 +711,13 @@ export function SecretDetail({ secretId, folderName = null }: SecretDetailProps)
                   <TableCell className="text-sm text-muted-foreground">
                     {new Date(v.createdAt).toLocaleString("ru-RU")}
                   </TableCell>
-                  <TableCell>{v.payloadEntryKeys?.length || 0}</TableCell>
                   <TableCell>
-                    {canWrite && (
+                    {capabilities.keyCountInList
+                      ? v.payloadEntryKeys?.length || 0
+                      : "—"}
+                  </TableCell>
+                  <TableCell>
+                    {canWrite && !pendingDeletion && (
                       <div className="flex gap-1 flex-wrap">
                         {v.status === "ACTIVE" &&
                           v.id !== secret.currentVersion?.id && (
@@ -674,11 +739,14 @@ export function SecretDetail({ secretId, folderName = null }: SecretDetailProps)
                                   handleScheduleDestruction(v.id, "604800s")
                                 }
                               >
-                                Удалить через 7д
+                                {retentionDays !== undefined
+                                  ? `Удалить (через ${retentionDays} дн.)`
+                                  : "Удалить через 7д"}
                               </Button>
                             </>
                           )}
-                        {v.status === "SCHEDULED_FOR_DESTRUCTION" && (
+                        {v.status === "SCHEDULED_FOR_DESTRUCTION" &&
+                          capabilities.versionDestructionCancel && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -757,7 +825,10 @@ export function SecretDetail({ secretId, folderName = null }: SecretDetailProps)
           <DialogHeader>
             <DialogTitle>Удаление секрета</DialogTitle>
             <DialogDescription>
-              Это действие необратимо. Для подтверждения введите{" "}
+              {capabilities.deferredSecretDeletion
+                ? `Секрет будет удалён через ${deletionDays ?? "?"} дн. До этого его можно восстановить. `
+                : "Это действие необратимо. "}
+              Для подтверждения введите{" "}
               <span className="font-mono font-bold">delete</span> ниже.
             </DialogDescription>
           </DialogHeader>
