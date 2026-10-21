@@ -10,9 +10,12 @@ export interface Secret {
   description: string;
   labels: Record<string, string>;
   kmsKeyId?: string;
-  status: "CREATING" | "ACTIVE" | "INACTIVE";
+  /** PENDING_DELETION: deletion is scheduled and can still be cancelled. */
+  status: "CREATING" | "ACTIVE" | "INACTIVE" | "PENDING_DELETION";
   currentVersion: SecretVersion;
   deletionProtection: boolean;
+  /** When a scheduled deletion takes effect (providers with deferred deletion). */
+  deletionScheduledAt?: string;
 }
 
 export interface SecretVersion {
@@ -21,8 +24,11 @@ export interface SecretVersion {
   createdAt: string;
   destroyAt?: string;
   description: string;
-  status: "ACTIVE" | "SCHEDULED_FOR_DESTRUCTION" | "DESTROYED";
+  /** EXPIRED: the version's validity period ended but it still exists. */
+  status: "ACTIVE" | "SCHEDULED_FOR_DESTRUCTION" | "DESTROYED" | "EXPIRED";
   payloadEntryKeys: string[];
+  /** Provider version stages/labels (e.g. Huawei SYSCURRENT, SYSPREVIOUS). */
+  stages?: string[];
 }
 
 export interface PayloadEntry {
@@ -97,6 +103,17 @@ export interface Folder {
   description: string;
   createdAt: string;
   status: string;
+}
+
+// KMS
+export interface KmsKey {
+  id: string;
+  name: string;
+  description: string;
+  status: string;
+  defaultAlgorithm: string;
+  /** The key to preselect for new secrets in this folder. */
+  isDefault?: boolean;
 }
 
 // API response wrappers

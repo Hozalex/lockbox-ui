@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPayload } from "@/lib/yc-api";
+import { getSecretsProvider } from "@/lib/providers";
 import {
   apiErrorResponse,
   validateResourceIdResponse,
@@ -27,7 +27,7 @@ export async function GET(
   }
 
   try {
-    const data = await getPayload(secretId, versionId);
+    const data = await getSecretsProvider().getPayload(secretId, versionId);
     return NextResponse.json(data);
   } catch (e) {
     return apiErrorResponse(e, `GET /api/secrets/${secretId}/payload`);

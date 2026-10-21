@@ -9,6 +9,12 @@ import {
   useMemo,
   type ReactNode,
 } from "react";
+import {
+  DEFAULT_CAPABILITIES,
+  DEFAULT_POLICY,
+  type ProviderCapabilities,
+  type ProviderUiPolicy,
+} from "@/lib/provider-ui";
 
 export type AuthMode = "oauth" | "keycloak" | null;
 
@@ -21,6 +27,10 @@ interface AuthContextType {
   keycloakEnabled: boolean;
   /** Valid project names from the server registry (LOCKBOX_PROJECTS). */
   projects: string[];
+  /** Active secrets provider and what it supports. */
+  provider: "yandex" | "huawei" | null;
+  capabilities: ProviderCapabilities;
+  policy: ProviderUiPolicy;
   /** OAuth login (paste token). */
   login: (token: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
@@ -33,6 +43,9 @@ const AuthContext = createContext<AuthContextType>({
   roles: [],
   keycloakEnabled: false,
   projects: [],
+  provider: null,
+  capabilities: DEFAULT_CAPABILITIES,
+  policy: DEFAULT_POLICY,
   login: async () => ({ ok: false }),
   logout: async () => {},
 });
@@ -48,6 +61,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [roles, setRoles] = useState<string[]>([]);
   const [keycloakEnabled, setKeycloakEnabled] = useState(false);
   const [projects, setProjects] = useState<string[]>([]);
+  const [provider, setProvider] = useState<AuthContextType["provider"]>(null);
+  const [capabilities, setCapabilities] = useState<ProviderCapabilities>(DEFAULT_CAPABILITIES);
+  const [policy, setPolicy] = useState<ProviderUiPolicy>(DEFAULT_POLICY);
 
   // Load app config (keycloakEnabled flag, project registry)
   useEffect(() => {
@@ -56,6 +72,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then((data) => {
         setKeycloakEnabled(!!data.keycloakEnabled);
         setProjects(Array.isArray(data.projects) ? data.projects : []);
+        if (data.provider) setProvider(data.provider);
+        if (data.capabilities) setCapabilities(data.capabilities);
+        if (data.policy) setPolicy(data.policy);
       })
       .catch(() => {});
   }, []);
@@ -141,6 +160,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       roles,
       keycloakEnabled,
       projects,
+      provider,
+      capabilities,
+      policy,
       login,
       logout,
     }),
@@ -151,6 +173,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       roles,
       keycloakEnabled,
       projects,
+      provider,
+      capabilities,
+      policy,
       login,
       logout,
     ]

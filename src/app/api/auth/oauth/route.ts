@@ -8,6 +8,7 @@ import {
   YC_IAM_ENDPOINT,
 } from "@/lib/auth";
 import { validateOAuthToken } from "@/lib/validation";
+import { tokenLoginEnabled } from "@/lib/providers/id";
 
 const COOKIE_OPTS = {
   httpOnly: true,
@@ -95,6 +96,12 @@ async function exchangeOAuthForIAM(
 
 // POST /api/auth/oauth — save OAuth token, exchange for IAM
 export async function POST(request: NextRequest) {
+  // Token login only exists for providers that enforce access with the user's
+  // own token (YC). Elsewhere a token session would bypass RBAC.
+  if (!tokenLoginEnabled()) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   // CSRF check
   if (!isValidOrigin(request)) {
     log.warn("Auth POST rejected: invalid Origin header");
@@ -188,6 +195,9 @@ export async function DELETE(request: NextRequest) {
 
 // GET /api/auth/oauth — check if authenticated
 export async function GET() {
+  if (!tokenLoginEnabled()) {
+    return NextResponse.json({ authenticated: false });
+  }
   const cookieStore = await cookies();
   const oauthToken = cookieStore.get(OAUTH_COOKIE)?.value;
   const iamToken = cookieStore.get(IAM_COOKIE)?.value;

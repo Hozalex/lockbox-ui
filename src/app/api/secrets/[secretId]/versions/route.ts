@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listVersions, addVersion } from "@/lib/yc-api";
+import { getSecretsProvider } from "@/lib/providers";
 import { log } from "@/lib/logger";
 import {
   apiErrorResponse,
@@ -25,7 +25,7 @@ export async function GET(
     request.nextUrl.searchParams.get("pageToken") || undefined;
 
   try {
-    const data = await listVersions(secretId, 100, pageToken);
+    const data = await getSecretsProvider().listVersions(secretId, pageToken);
     return NextResponse.json(data);
   } catch (e) {
     return apiErrorResponse(e, `GET /api/secrets/${secretId}/versions`);
@@ -49,7 +49,7 @@ export async function POST(
     if ("response" in parsed) return parsed.response;
     const { data: body } = parsed;
 
-    const data = await addVersion(secretId, body);
+    const data = await getSecretsProvider().addVersion(secretId, body);
     log.info(`Version added to secret ${secretId}`);
     return NextResponse.json(data);
   } catch (e) {
