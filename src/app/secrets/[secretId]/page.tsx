@@ -25,7 +25,11 @@ export default function SecretPage() {
 
   return (
     <div className="min-h-screen">
-      <Header folderId={folderId} onFolderChange={handleFolderChange} />
+      <Header
+        folderId={folderId}
+        folderName={folderName}
+        onFolderChange={handleFolderChange}
+      />
       <main className="container mx-auto px-4 py-6">
         <SecretDetail secretId={secretId} folderName={folderName} />
       </main>

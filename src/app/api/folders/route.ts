@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listFolders } from "@/lib/yc-api";
+import { getSecretsProvider } from "@/lib/providers";
 import {
   apiErrorResponse,
   badRequest,
@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
   if (cloudIdError) return cloudIdError;
 
   try {
-    const data = await listFolders(cloudId);
+    const data = await getSecretsProvider().listFolders(cloudId);
     const folders = data.folders || [];
 
     // Keycloak users: filter to only folders they have access to (by role).

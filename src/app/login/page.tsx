@@ -23,7 +23,9 @@ export default function LoginPage() {
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const { login, keycloakEnabled } = useAuth();
+  const { login, keycloakEnabled, provider, capabilities } = useAuth();
+  // Token login only for providers that support it (YC); hidden until config loads.
+  const showTokenLogin = provider !== null && capabilities.tokenLogin;
   const router = useRouter();
 
   const handleOAuthSubmit = async (e: React.FormEvent) => {
@@ -54,7 +56,9 @@ export default function LoginPage() {
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">Lockbox UI</CardTitle>
           <CardDescription>
-            Управление секретами Yandex Cloud Lockbox
+            {provider === "huawei"
+              ? "Управление секретами Huawei Cloud CSMS"
+              : "Управление секретами Yandex Cloud Lockbox"}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -68,80 +72,92 @@ export default function LoginPage() {
               >
                 Войти через Keycloak
               </Button>
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <Separator className="w-full" />
+              {showTokenLogin && (
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <Separator className="w-full" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground">
+                      или
+                    </span>
+                  </div>
                 </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-card px-2 text-muted-foreground">
-                    или
-                  </span>
-                </div>
-              </div>
+              )}
             </>
           )}
 
-          {/* OAuth login (always available) */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground">
-                1
-              </span>
-              <Label className="text-sm font-medium">
-                Получите OAuth-токен
-              </Label>
-            </div>
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => window.open(YC_OAUTH_URL, "_blank")}
-            >
-              Открыть Yandex OAuth
-            </Button>
-            <p className="text-xs text-muted-foreground text-center">
-              Авторизуйтесь и скопируйте токен со страницы
+          {provider !== null && !keycloakEnabled && !capabilities.tokenLogin && (
+            <p className="text-sm text-muted-foreground">
+              Вход не настроен: для этого провайдера нужен Keycloak.
             </p>
-          </div>
+          )}
 
-          <Separator />
-
-          <form onSubmit={handleOAuthSubmit} className="space-y-4">
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground">
-                  2
-                </span>
-                <Label htmlFor="token" className="text-sm font-medium">
-                  Вставьте токен
-                </Label>
+          {/* OAuth token login (providers with token login only) */}
+          {showTokenLogin && (
+            <>
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground">
+                    1
+                  </span>
+                  <Label className="text-sm font-medium">
+                    Получите OAuth-токен
+                  </Label>
+                </div>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => window.open(YC_OAUTH_URL, "_blank")}
+                >
+                  Открыть Yandex OAuth
+                </Button>
+                <p className="text-xs text-muted-foreground text-center">
+                  Авторизуйтесь и скопируйте токен со страницы
+                </p>
               </div>
-              <Input
-                id="token"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                placeholder="y3_Vdheub7w..."
-                className="font-mono text-sm"
-                autoComplete="off"
-              />
-              <p className="text-xs text-muted-foreground">
-                OAuth-токен действителен 1 год. IAM-токен обновляется автоматически.
-              </p>
-            </div>
 
-            {error && (
-              <p className="text-sm text-destructive">{error}</p>
-            )}
+              <Separator />
 
-            <Button
-              type="submit"
-              className="w-full"
-              size="lg"
-              variant={keycloakEnabled ? "outline" : "default"}
-              disabled={loading || !token.trim()}
-            >
-              {loading ? "Проверка..." : "Войти с OAuth-токеном"}
-            </Button>
-          </form>
+              <form onSubmit={handleOAuthSubmit} className="space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground">
+                      2
+                    </span>
+                    <Label htmlFor="token" className="text-sm font-medium">
+                      Вставьте токен
+                    </Label>
+                  </div>
+                  <Input
+                    id="token"
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    placeholder="y3_Vdheub7w..."
+                    className="font-mono text-sm"
+                    autoComplete="off"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    OAuth-токен действителен 1 год. IAM-токен обновляется автоматически.
+                  </p>
+                </div>
+
+                {error && (
+                  <p className="text-sm text-destructive">{error}</p>
+                )}
+
+                <Button
+                  type="submit"
+                  className="w-full"
+                  size="lg"
+                  variant={keycloakEnabled ? "outline" : "default"}
+                  disabled={loading || !token.trim()}
+                >
+                  {loading ? "Проверка..." : "Войти с OAuth-токеном"}
+                </Button>
+              </form>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>

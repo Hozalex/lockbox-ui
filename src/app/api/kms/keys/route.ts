@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listKmsKeys } from "@/lib/yc-api";
+import { getSecretsProvider } from "@/lib/providers";
 import { log } from "@/lib/logger";
 import {
   badRequest,
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
   if (denied) return denied;
 
   try {
-    const data = await listKmsKeys(folderId);
+    const data = await getSecretsProvider().listKmsKeys(folderId);
     return NextResponse.json({ keys: data.keys || [] });
   } catch (e) {
     // If user has no KMS access — return empty list with error message,

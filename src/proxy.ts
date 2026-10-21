@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import type { NextAuthRequest } from "next-auth";
+import { tokenLoginEnabled } from "@/lib/providers/id";
 
 const PUBLIC_PATHS = [
   "/login",
@@ -67,7 +68,10 @@ export default auth(function proxy(request) {
   }
 
   // ── OAuth: httpOnly cookie — cannot be planted by client JS ──────────────
-  const oauthToken = request.cookies.get("oauth_token")?.value;
+  // Token sessions are only honoured for providers with token login (YC).
+  const oauthToken = tokenLoginEnabled()
+    ? request.cookies.get("oauth_token")?.value
+    : undefined;
   if (oauthToken) {
     if (pathname.startsWith("/api/")) return NextResponse.next();
     return withNonce(request);
