@@ -16,6 +16,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { FolderSelector } from "@/components/folder-selector";
 import type { CloneSecretData } from "@/lib/types";
 import { NAME_REGEX, validateKeys } from "@/lib/validation";
+import { useAuth } from "@/components/session-provider";
+import { namePrefixFor, withoutSystemLabels } from "@/lib/provider-ui";
 import { PROJECT_LABEL_KEY } from "@/lib/rbac";
 
 interface KeyValue {
@@ -28,12 +30,16 @@ interface LabelEntry {
   value: string;
 }
 
-// Each folder has a KMS key for the kuber cluster (named `k8s-kms-key-...`) —
-// default to it. Falls back to the first available key if the name differs.
+// Default KMS key: the one the provider flags for this folder (Huawei: per
+// environment); otherwise YC's kuber cluster key (`k8s-kms-key-...`);
+// otherwise the first available key.
 const CLUSTER_KEY_RE = /^k8s-kms-key/i;
-function pickDefaultKmsKey(keys: Array<{ id: string; name: string }>): string {
+function pickDefaultKmsKey(
+  keys: Array<{ id: string; name: string; isDefault?: boolean }>
+): string {
+  const flagged = keys.find((k) => k.isDefault);
   const cluster = keys.find((k) => CLUSTER_KEY_RE.test(k.name || ""));
-  return (cluster ?? keys[0])?.id ?? "";
+  return (flagged ?? cluster ?? keys[0])?.id ?? "";
 }
 
 interface SecretCreateDialogProps {
@@ -62,6 +68,9 @@ export function SecretCreateDialog({
 }: SecretCreateDialogProps) {
   const isCloneMode = !!initialData;
 
+  const { policy } = useAuth();
+  // Name typed by the user; for providers with a naming rule it's the part
+  // after the fixed "<folder>-<project>-" prefix.
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [kmsKeyId, setKmsKeyId] = useState("");
@@ -89,7 +98,17 @@ export function SecretCreateDialog({
 
     if (initialData) {
       // Clone mode: pre-fill from source secret
-      setName(`${initialData.name}-clone`);
+      const clonePrefix = namePrefixFor(
+        policy,
+        initialData.sourceFolderId,
+        presetProject ?? initialData.labels?.[PROJECT_LABEL_KEY]
+      );
+      const cloneName = `${initialData.name}-clone`;
+      setName(
+        clonePrefix && cloneName.startsWith(clonePrefix)
+          ? cloneName.slice(clonePrefix.length)
+          : cloneName
+      );
       setDescription(initialData.description);
       setKmsKeyId(initialData.kmsKeyId || "");
       setDeletionProtection(initialData.deletionProtection);
@@ -98,9 +117,12 @@ export function SecretCreateDialog({
         presetProject ?? initialData.labels?.[PROJECT_LABEL_KEY] ?? ""
       );
       setLabels(
-        Object.entries(initialData.labels || {})
-          .filter(([key]) => key !== PROJECT_LABEL_KEY)
-          .map(([key, value]) => ({ key, value }))
+        withoutSystemLabels(
+          policy,
+          Object.entries(initialData.labels || {})
+            .filter(([key]) => key !== PROJECT_LABEL_KEY)
+            .map(([key, value]) => ({ key, value }))
+        )
       );
       const mappedEntries =
         initialData.entries.length > 0
@@ -137,7 +159,7 @@ export function SecretCreateDialog({
     }
     setError(null);
     setSaving(false);
-  }, [open, initialData, folderId, presetProject]);
+  }, [open, initialData, folderId, presetProject, policy]);
 
   // Sync targetFolderId when folderId prop changes (non-clone mode)
   useEffect(() => {
@@ -185,6 +207,9 @@ export function SecretCreateDialog({
   const updateEntry = (i: number, field: "key" | "value", val: string) =>
     setEntries(entries.map((e, idx) => (idx === i ? { ...e, [field]: val } : e)));
 
+  // Fixed name prefix for the target folder/project ("" when names are free-form).
+  const namePrefix = namePrefixFor(policy, targetFolderId, project || null);
+
   const addLabel = () => setLabels([...labels, { key: "", value: "" }]);
   const removeLabel = (i: number) =>
     setLabels(labels.filter((_, idx) => idx !== i));
@@ -194,7 +219,16 @@ export function SecretCreateDialog({
   const handleSubmit = async () => {
     setError(null);
 
-    if (name.trim() && !NAME_REGEX.test(name.trim())) {
+    const fullName =
+      namePrefix && !name.startsWith(namePrefix) ? namePrefix + name : name;
+
+    const systemLabel = labels.find((l) => policy.systemLabels.includes(l.key.trim()));
+    if (systemLabel) {
+      setError(`Метка «${systemLabel.key}» проставляется автоматически — удалите её.`);
+      return;
+    }
+
+    if (name.trim() && !NAME_REGEX.test(fullName.trim())) {
       setError("Невалидное имя: допустимы только латиница, цифры, _, -, .");
       return;
     }
@@ -245,7 +279,7 @@ export function SecretCreateDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           folderId: targetFolderId,
-          name,
+          name: fullName,
           description: description || undefined,
           kmsKeyId: kmsKeyId || undefined,
           deletionProtection,
@@ -329,12 +363,27 @@ export function SecretCreateDialog({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="name">Имя *</Label>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="my-secret"
-              />
+              {namePrefix ? (
+                <div className="flex items-center">
+                  <span className="flex h-9 items-center rounded-l-md border border-r-0 bg-muted px-2 font-mono text-sm text-muted-foreground">
+                    {namePrefix}
+                  </span>
+                  <Input
+                    id="name"
+                    className="rounded-l-none"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="redis-secrets"
+                  />
+                </div>
+              ) : (
+                <Input
+                  id="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="my-secret"
+                />
+              )}
             </div>
             <div>
               <Label htmlFor="kmsKeyId">KMS Key</Label>

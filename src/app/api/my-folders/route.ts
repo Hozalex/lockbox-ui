@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { listClouds, listFolders, getFolder } from "@/lib/yc-api";
+import { getSecretsProvider, tokenLoginEnabled } from "@/lib/providers";
 import {
   isAdmin,
   folderHasAnyAccess,
@@ -36,7 +36,7 @@ interface FolderEntry {
 export async function GET(request: NextRequest) {
   try {
     const cookieStore = await cookies();
-    const isOAuth = !!cookieStore.get("oauth_token")?.value;
+    const isOAuth = tokenLoginEnabled() && !!cookieStore.get("oauth_token")?.value;
 
     // Determine roles for Keycloak users
     let roles: string[] = [];
@@ -70,11 +70,11 @@ export async function GET(request: NextRequest) {
 
     // ── Path 1: cloud scan ───────────────────────────────────────────────
     try {
-      const cloudsData = await listClouds();
+      const cloudsData = await getSecretsProvider().listClouds();
       const clouds = cloudsData.clouds || [];
 
       for (const cloud of clouds) {
-        const foldersData = await listFolders(cloud.id);
+        const foldersData = await getSecretsProvider().listFolders(cloud.id);
         for (const f of foldersData.folders || []) {
           if (isOAuth || admin) {
             addFolder({ id: f.id, name: f.name, cloudId: f.cloudId, access: admin ? "rw" : undefined });
@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
     for (const folderId of verifyIds) {
       if (seen.has(folderId)) continue; // already found via cloud scan
       try {
-        const f = await getFolder(folderId);
+        const f = await getSecretsProvider().getFolder(folderId);
         if (!f?.name) continue;
 
         if (isOAuth || admin) {
