@@ -361,16 +361,16 @@ export function SecretCreateDialog({
           )}
 
           <div className="grid grid-cols-2 gap-4">
-            <div>
+            <div className="col-span-2">
               <Label htmlFor="name">Имя *</Label>
               {namePrefix ? (
                 <div className="flex items-center">
-                  <span className="flex h-9 items-center rounded-l-md border border-r-0 bg-muted px-2 font-mono text-sm text-muted-foreground">
+                  <span className="flex h-9 shrink-0 items-center whitespace-nowrap rounded-l-md border border-r-0 bg-muted px-2 font-mono text-sm text-muted-foreground">
                     {namePrefix}
                   </span>
                   <Input
                     id="name"
-                    className="rounded-l-none"
+                    className="min-w-0 flex-1 rounded-l-none"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="redis-secrets"
