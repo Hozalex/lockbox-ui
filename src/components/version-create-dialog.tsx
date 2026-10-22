@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { PayloadEntry } from "@/lib/types";
+import { useAuth } from "@/components/session-provider";
 import { validateKeys } from "@/lib/validation";
 
 interface KeyValue {
@@ -28,6 +29,8 @@ interface VersionCreateDialogProps {
   onOpenChange: (open: boolean) => void;
   secretId: string;
   currentEntries: PayloadEntry[];
+  /** Set when the current version is a plain string. */
+  currentPlainText?: string;
   currentVersionId: string;
   onConflict: () => void;
   onSuccess: () => void;
@@ -38,10 +41,15 @@ export function VersionCreateDialog({
   onOpenChange,
   secretId,
   currentEntries,
+  currentPlainText,
   currentVersionId,
   onConflict,
   onSuccess,
 }: VersionCreateDialogProps) {
+  const { capabilities } = useAuth();
+  const allowText = capabilities.plainTextPayload;
+  const [textMode, setTextMode] = useState(false);
+  const [plainText, setPlainText] = useState("");
   const [description, setDescription] = useState("");
   const [entries, setEntries] = useState<KeyValue[]>([]);
   const [jsonMode, setJsonMode] = useState(false);
@@ -59,11 +67,13 @@ export function VersionCreateDialog({
           removed: false,
         }))
       );
+      setTextMode(allowText && currentPlainText !== undefined);
+      setPlainText(currentPlainText ?? "");
       setDescription("");
       setJsonInput("");
       setError(null);
     }
-  }, [open, currentEntries]);
+  }, [open, currentEntries, currentPlainText, allowText]);
 
   const addEntry = () =>
     setEntries([...entries, { key: "", value: "", isNew: true }]);
@@ -89,7 +99,13 @@ export function VersionCreateDialog({
     //  - { key } (no value) — remove a key from the version
     let payloadEntries: { key: string; textValue?: string }[] = [];
 
-    if (jsonMode) {
+    if (textMode) {
+      if (!plainText) {
+        setError("Введите текст секрета");
+        setSaving(false);
+        return;
+      }
+    } else if (jsonMode) {
       try {
         const parsed = JSON.parse(jsonInput);
         // In JSON mode, merge with existing (non-removed) entries
@@ -142,7 +158,7 @@ export function VersionCreateDialog({
       return;
     }
 
-    if (payloadEntries.length === 0) {
+    if (!textMode && payloadEntries.length === 0) {
       setError("Нужна хотя бы одна запись");
       setSaving(false);
       return;
@@ -164,7 +180,8 @@ export function VersionCreateDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           description: description || undefined,
-          payloadEntries,
+          payloadEntries: textMode ? [] : payloadEntries,
+          plainText: textMode ? plainText : undefined,
         }),
       });
 
@@ -206,24 +223,49 @@ export function VersionCreateDialog({
             <Label>Записи</Label>
             <div className="flex gap-2">
               <Button
-                variant={jsonMode ? "outline" : "secondary"}
+                variant={!textMode && !jsonMode ? "secondary" : "outline"}
                 size="sm"
-                onClick={() => setJsonMode(false)}
+                onClick={() => {
+                  setTextMode(false);
+                  setJsonMode(false);
+                }}
               >
                 Поля
               </Button>
               <Button
-                variant={jsonMode ? "secondary" : "outline"}
+                variant={!textMode && jsonMode ? "secondary" : "outline"}
                 size="sm"
-                onClick={() => setJsonMode(true)}
+                onClick={() => {
+                  setTextMode(false);
+                  setJsonMode(true);
+                }}
               >
                 + JSON
               </Button>
+              {allowText && (
+                <Button
+                  variant={textMode ? "secondary" : "outline"}
+                  size="sm"
+                  onClick={() => setTextMode(true)}
+                >
+                  Текст
+                </Button>
+              )}
             </div>
           </div>
 
+          {textMode && (
+            <Textarea
+              value={plainText}
+              onChange={(e) => setPlainText(e.target.value)}
+              placeholder="Произвольный текст (например, YAML-конфиг)"
+              rows={Math.max(8, Math.min(25, plainText.split("\n").length + 2))}
+              className="font-mono text-sm [field-sizing:fixed] [overflow-wrap:anywhere]"
+            />
+          )}
+
           {/* Existing entries */}
-          {entries.map((entry, i) => (
+          {!textMode && entries.map((entry, i) => (
             <div
               key={i}
               className={`flex gap-2 items-center ${entry.removed ? "opacity-40" : ""}`}
@@ -259,11 +301,13 @@ export function VersionCreateDialog({
             </div>
           ))}
 
-          <Button variant="outline" size="sm" onClick={addEntry}>
-            + Добавить запись
-          </Button>
+          {!textMode && (
+            <Button variant="outline" size="sm" onClick={addEntry}>
+              + Добавить запись
+            </Button>
+          )}
 
-          {jsonMode && (
+          {!textMode && jsonMode && (
             <div>
               <Label>Добавить из JSON (объединяется с записями выше)</Label>
               <Textarea

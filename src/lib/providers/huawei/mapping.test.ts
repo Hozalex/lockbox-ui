@@ -8,6 +8,7 @@ import {
   mapSecret,
   mapVersion,
   parsePayload,
+  requirePlainText,
   serializeEntries,
   userLabels,
 } from "./mapping";
@@ -136,5 +137,15 @@ describe("versions & secrets", () => {
       deletionProtection: false,
       deletionScheduledAt: new Date(now + 7 * 864e5).toISOString(),
     });
+  });
+});
+
+describe("requirePlainText", () => {
+  it("keeps multi-line text as is", () => {
+    expect(requirePlainText("a:\n  b: 1\n")).toBe("a:\n  b: 1\n");
+  });
+  it("rejects empty or non-string values", () => {
+    expect(() => requirePlainText("")).toThrow();
+    expect(() => requirePlainText(5)).toThrow();
   });
 });
