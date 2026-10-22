@@ -52,6 +52,14 @@ export function serializeEntries(entries: { key: string; textValue?: string }[])
   return JSON.stringify(Object.fromEntries(entries.map((e) => [e.key, e.textValue ?? ""])));
 }
 
+/** Validates a plain-text payload (CSMS rejects empty values). */
+export function requirePlainText(text: unknown): string {
+  if (typeof text !== "string" || text.length === 0) {
+    throw new ProviderApiError(400, "Текст секрета не может быть пустым");
+  }
+  return text;
+}
+
 /**
  * Apply YC-style changes to the current payload and return the new
  * secret_string. A change with a value sets the key; a key-only change deletes

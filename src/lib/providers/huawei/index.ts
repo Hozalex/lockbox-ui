@@ -12,6 +12,7 @@ import {
 import { hwRequest } from "@/lib/providers/huawei/client";
 import {
   applyPayloadChanges,
+  requirePlainText,
   currentVersionId,
   diffTags,
   environmentOf,
@@ -233,6 +234,7 @@ export const huaweiProvider: SecretsProvider = {
     versionDestructionCancel: false,
     deferredSecretDeletion: true,
     keyCountInList: false,
+    plainTextPayload: true,
   },
 
   uiPolicy() {
@@ -330,7 +332,10 @@ export const huaweiProvider: SecretsProvider = {
         name,
         description: body.description || undefined,
         kms_key_id: kmsKeyId,
-        secret_string: serializeEntries(body.versionPayloadEntries ?? []),
+        secret_string:
+          body.versionPlainText !== undefined
+            ? requirePlainText(body.versionPlainText)
+            : serializeEntries(body.versionPayloadEntries ?? []),
         enterprise_project_id: c.enterpriseProjectId,
       },
     });
@@ -405,7 +410,12 @@ export const huaweiProvider: SecretsProvider = {
     await showSecret(name);
     const id = versionId ?? currentVersionId(await versionMetas(name));
     if (!id) throw new ProviderApiError(404, `У секрета «${name}» нет текущей версии`);
-    return { versionId: id, entries: parsePayload(await readVersion(name, id)).entries };
+    const parsed = parsePayload(await readVersion(name, id));
+    return {
+      versionId: id,
+      entries: parsed.entries,
+      ...(parsed.format === "plain" ? { plainText: parsed.entries[0]?.textValue ?? "" } : {}),
+    };
   },
 
   async listVersions(name) {
@@ -423,10 +433,15 @@ export const huaweiProvider: SecretsProvider = {
     if (body.baseVersionId && currentId && body.baseVersionId !== currentId) {
       throw new ProviderApiError(409, "Секрет был изменён другим пользователем — обновите страницу");
     }
-    const current = currentId
-      ? parsePayload(await readVersion(name, currentId))
-      : { format: "json" as const, entries: [] };
-    const secretString = applyPayloadChanges(current, body.payloadEntries ?? []);
+    let secretString: string;
+    if (body.plainText !== undefined) {
+      secretString = requirePlainText(body.plainText);
+    } else {
+      const current = currentId
+        ? parsePayload(await readVersion(name, currentId))
+        : { format: "json" as const, entries: [] };
+      secretString = applyPayloadChanges(current, body.payloadEntries ?? []);
+    }
     await hwRequest({
       method: "POST",
       path: `/secrets/${enc(name)}/versions`,

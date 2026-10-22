@@ -40,6 +40,8 @@ export interface PayloadEntry {
 export interface Payload {
   versionId: string;
   entries: PayloadEntry[];
+  /** Set when the version holds one plain string instead of key/value pairs. */
+  plainText?: string;
 }
 
 export interface PayloadEntryChange {
@@ -55,6 +57,7 @@ export interface CloneSecretData {
   deletionProtection: boolean;
   labels: Record<string, string>;
   entries: PayloadEntry[];
+  plainText?: string;
   sourceFolderId: string;
 }
 
@@ -66,12 +69,16 @@ export interface CreateSecretRequest {
   kmsKeyId?: string;
   versionDescription?: string;
   versionPayloadEntries?: PayloadEntryChange[];
+  /** Plain-text payload instead of key/value entries (needs capabilities.plainTextPayload). */
+  versionPlainText?: string;
   deletionProtection?: boolean;
 }
 
 export interface AddVersionRequest {
   description?: string;
   payloadEntries: PayloadEntryChange[];
+  /** Replaces the whole payload with a plain string (needs capabilities.plainTextPayload). */
+  plainText?: string;
   baseVersionId?: string;
 }
 

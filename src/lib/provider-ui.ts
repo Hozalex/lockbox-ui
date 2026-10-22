@@ -17,6 +17,7 @@ export const DEFAULT_CAPABILITIES: ProviderCapabilities = {
   versionDestructionCancel: true,
   deferredSecretDeletion: false,
   keyCountInList: true,
+  plainTextPayload: false,
 };
 
 export const DEFAULT_POLICY: ProviderUiPolicy = { systemLabels: [] };
