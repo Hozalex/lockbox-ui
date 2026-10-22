@@ -40,6 +40,8 @@ export interface ProviderCapabilities {
   deferredSecretDeletion: boolean;
   /** Secret lists include each secret's key count (without reading values). */
   keyCountInList: boolean;
+  /** Secrets can hold a plain string instead of key/value pairs. */
+  plainTextPayload: boolean;
 }
 
 /** Provider rules the UI needs to offer the right options and wording. */

@@ -68,7 +68,7 @@ export function SecretCreateDialog({
 }: SecretCreateDialogProps) {
   const isCloneMode = !!initialData;
 
-  const { policy } = useAuth();
+  const { policy, capabilities } = useAuth();
   // Name typed by the user; for providers with a naming rule it's the part
   // after the fixed "<folder>-<project>-" prefix.
   const [name, setName] = useState("");
@@ -76,6 +76,8 @@ export function SecretCreateDialog({
   const [kmsKeyId, setKmsKeyId] = useState("");
   const [deletionProtection, setDeletionProtection] = useState(false);
   const [entries, setEntries] = useState<KeyValue[]>([{ key: "", value: "" }]);
+  const [textMode, setTextMode] = useState(false);
+  const [plainText, setPlainText] = useState("");
   const [labels, setLabels] = useState<LabelEntry[]>([]);
   const [project, setProject] = useState<string>("");
   const [jsonMode, setJsonMode] = useState(false);
@@ -132,6 +134,9 @@ export function SecretCreateDialog({
             }))
           : [{ key: "", value: "" }];
       setEntries(mappedEntries);
+      const clonedText = capabilities.plainTextPayload ? initialData.plainText : undefined;
+      setTextMode(clonedText !== undefined);
+      setPlainText(clonedText ?? "");
       // Auto-switch to JSON mode for secrets with many entries
       if (mappedEntries.length > 5) {
         const jsonObj = Object.fromEntries(
@@ -151,6 +156,8 @@ export function SecretCreateDialog({
       setKmsKeyId("");
       setDeletionProtection(false);
       setEntries([{ key: "", value: "" }]);
+      setTextMode(false);
+      setPlainText("");
       setLabels([]);
       setProject(presetProject ?? "");
       setTargetFolderId(folderId);
@@ -242,7 +249,13 @@ export function SecretCreateDialog({
 
     let payloadEntries: { key: string; textValue: string }[] = [];
 
-    if (jsonMode) {
+    if (textMode) {
+      if (!plainText) {
+        setError("Введите текст секрета");
+        setSaving(false);
+        return;
+      }
+    } else if (jsonMode) {
       try {
         const parsed = JSON.parse(jsonInput);
         payloadEntries = Object.entries(parsed).map(([k, v]) => ({
@@ -284,7 +297,8 @@ export function SecretCreateDialog({
           kmsKeyId: kmsKeyId || undefined,
           deletionProtection,
           versionPayloadEntries:
-            payloadEntries.length > 0 ? payloadEntries : undefined,
+            !textMode && payloadEntries.length > 0 ? payloadEntries : undefined,
+          versionPlainText: textMode ? plainText : undefined,
           labels: Object.keys(labelsMap).length > 0 ? labelsMap : undefined,
         }),
       });
@@ -499,9 +513,10 @@ export function SecretCreateDialog({
               <Label>Данные секрета</Label>
               <div className="flex gap-2">
                 <Button
-                  variant={jsonMode ? "outline" : "secondary"}
+                  variant={!textMode && !jsonMode ? "secondary" : "outline"}
                   size="sm"
                   onClick={() => {
+                    setTextMode(false);
                     // Sync JSON → fields
                     if (jsonMode && jsonInput.trim()) {
                       try {
@@ -522,9 +537,10 @@ export function SecretCreateDialog({
                   Поля
                 </Button>
                 <Button
-                  variant={jsonMode ? "secondary" : "outline"}
+                  variant={!textMode && jsonMode ? "secondary" : "outline"}
                   size="sm"
                   onClick={() => {
+                    setTextMode(false);
                     // Sync fields → JSON
                     if (!jsonMode) {
                       const filled = entries.filter((e) => e.key.trim());
@@ -540,10 +556,27 @@ export function SecretCreateDialog({
                 >
                   JSON
                 </Button>
+                {capabilities.plainTextPayload && (
+                  <Button
+                    variant={textMode ? "secondary" : "outline"}
+                    size="sm"
+                    onClick={() => setTextMode(true)}
+                  >
+                    Текст
+                  </Button>
+                )}
               </div>
             </div>
 
-            {jsonMode ? (
+            {textMode ? (
+              <Textarea
+                value={plainText}
+                onChange={(e) => setPlainText(e.target.value)}
+                placeholder="Произвольный текст (например, YAML-конфиг)"
+                rows={Math.max(8, Math.min(25, plainText.split("\n").length + 2))}
+                className="font-mono text-sm [field-sizing:fixed] [overflow-wrap:anywhere]"
+              />
+            ) : jsonMode ? (
               <Textarea
                 value={jsonInput}
                 onChange={(e) => setJsonInput(e.target.value)}

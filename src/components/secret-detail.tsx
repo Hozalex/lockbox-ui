@@ -60,6 +60,7 @@ export function SecretDetail({ secretId, folderName = null }: SecretDetailProps)
   const { projects, capabilities, policy } = useAuth();
   const [secret, setSecret] = useState<Secret | null>(null);
   const [entries, setEntries] = useState<PayloadEntry[]>([]);
+  const [plainText, setPlainText] = useState<string | undefined>(undefined);
   const [versions, setVersions] = useState<SecretVersion[]>([]);
   const [selectedVersionId, setSelectedVersionId] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -163,6 +164,7 @@ export function SecretDetail({ secretId, folderName = null }: SecretDetailProps)
         // Handle payload
         if (payloadResult.status === "fulfilled") {
           setEntries(payloadResult.value.entries || []);
+          setPlainText(payloadResult.value.plainText);
           if (payloadResult.value.versionId)
             setSelectedVersionId(payloadResult.value.versionId);
         } else if (retry < 3) {
@@ -171,12 +173,15 @@ export function SecretDetail({ secretId, folderName = null }: SecretDetailProps)
           try {
             const pl = await fetchPayload();
             setEntries(pl.entries || []);
+            setPlainText(pl.plainText);
             if (pl.versionId) setSelectedVersionId(pl.versionId);
           } catch {
             setEntries([]);
+            setPlainText(undefined);
           }
         } else {
           setEntries([]);
+          setPlainText(undefined);
         }
 
         // Handle versions
@@ -212,10 +217,12 @@ export function SecretDetail({ secretId, folderName = null }: SecretDetailProps)
       try {
         const data = await fetchPayload(versionId);
         setEntries(data.entries || []);
+        setPlainText(data.plainText);
         if (data.versionId) setSelectedVersionId(data.versionId);
       } catch (e) {
         console.error(e);
         setEntries([]);
+        setPlainText(undefined);
       }
     },
     [fetchPayload]
@@ -591,7 +598,7 @@ export function SecretDetail({ secretId, folderName = null }: SecretDetailProps)
                 </>
               )}
             </div>
-            {entries.length > 0 && (
+            {entries.length > 0 && plainText === undefined && (
               <div className="flex items-center gap-2">
                 <Button
                   variant={viewMode === "table" ? "secondary" : "outline"}
@@ -611,7 +618,25 @@ export function SecretDetail({ secretId, folderName = null }: SecretDetailProps)
             )}
           </div>
 
-          {entries.length === 0 ? (
+          {plainText !== undefined ? (
+            <div className="relative">
+              <Button
+                variant="outline"
+                size="sm"
+                className="absolute right-3 top-3 z-10"
+                onClick={() => {
+                  navigator.clipboard.writeText(plainText);
+                  setJsonCopied(true);
+                  setTimeout(() => setJsonCopied(false), 2000);
+                }}
+              >
+                {jsonCopied ? "Скопировано!" : "Копировать"}
+              </Button>
+              <pre className="overflow-auto whitespace-pre-wrap break-words rounded-lg border bg-muted p-4 pr-32 font-mono text-sm">
+                {plainText}
+              </pre>
+            </div>
+          ) : entries.length === 0 ? (
             <p className="text-muted-foreground">Нет записей</p>
           ) : viewMode === "json" ? (
             <div className="relative">
@@ -771,6 +796,7 @@ export function SecretDetail({ secretId, folderName = null }: SecretDetailProps)
         onOpenChange={setShowVersionDialog}
         secretId={secretId}
         currentEntries={entries}
+        currentPlainText={plainText}
         currentVersionId={secret.currentVersion?.id || ""}
         onConflict={() => {
           setShowVersionDialog(false);
@@ -793,6 +819,7 @@ export function SecretDetail({ secretId, folderName = null }: SecretDetailProps)
           deletionProtection: secret.deletionProtection,
           labels: secret.labels || {},
           entries,
+          plainText,
           sourceFolderId: secret.folderId,
         }}
         onSuccess={(newSecretId) => {
