@@ -17,6 +17,7 @@ export const yandexProvider: SecretsProvider = {
     versionDestructionCancel: true,
     deferredSecretDeletion: false,
     keyCountInList: true,
+    plainTextPayload: false,
   },
 
   uiPolicy: () => ({ systemLabels: [] }),
