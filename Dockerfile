@@ -16,7 +16,9 @@ ENV NEXT_PUBLIC_BUILD_VERSION=$BUILD_VERSION
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-RUN npm run build
+# Git does not preserve the empty public directory. Keep it present so the
+# runner-stage COPY works even when the application has no public assets.
+RUN mkdir -p public && npm run build
 
 # Production — minimal runtime
 FROM node:20-alpine AS runner
