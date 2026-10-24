@@ -30,8 +30,6 @@ interface FolderSelectorProps {
   onFoldersLoaded?: (count: number | null) => void;
 }
 
-const MAX_VISIBLE_ENVIRONMENTS = 10;
-
 export function FolderSelector({
   selectedFolderId,
   selectedFolderName,
@@ -186,11 +184,9 @@ export function FolderSelector({
           )}
         </SelectTrigger>
         <SelectContent
-          viewportClassName={
-            folders.length > MAX_VISIBLE_ENVIRONMENTS
-              ? "max-h-[20.5rem]"
-              : undefined
-          }
+          position="popper"
+          align="start"
+          viewportClassName="h-auto! max-h-[20.5rem]"
         >
           {folders.map((f) => (
             <SelectItem key={f.id} value={f.id}>
