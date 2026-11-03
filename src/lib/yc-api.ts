@@ -217,6 +217,20 @@ export async function getPayload(secretId: string, versionId?: string) {
 }
 
 // Versions
+export async function waitOperation(operation: Operation): Promise<Operation> {
+  let result = operation;
+  for (let attempt = 0; !result.done && attempt < 20; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    result = await request<Operation>(
+      "https://operation.api.yandexcloud.kz",
+      `/operations/${encodeURIComponent(result.id)}`
+    );
+  }
+  if (!result.done) throw new YCApiError(504, "Операция Yandex Cloud ещё выполняется");
+  if (result.error) throw new YCApiError(502, result.error.message);
+  return result;
+}
+
 export function listVersions(
   secretId: string,
   pageSize = 100,

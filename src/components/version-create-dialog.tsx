@@ -190,7 +190,11 @@ export function VersionCreateDialog({
         throw new Error(data.error || `HTTP ${res.status}`);
       }
 
+      const result = await res.json();
       onSuccess();
+      if (Array.isArray(result.warnings) && result.warnings.length > 0) {
+        window.alert(result.warnings.join("\n"));
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {

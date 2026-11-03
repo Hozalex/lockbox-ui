@@ -1,6 +1,7 @@
 import * as yc from "@/lib/yc-api";
 import { validateYCResourceId } from "@/lib/validation";
 import type { SecretsProvider } from "@/lib/providers/types";
+import { addVersionWithRetention } from "@/lib/providers/yandex-retention";
 
 /**
  * Yandex Cloud Lockbox. A thin adapter over the existing yc-api client — the
@@ -36,7 +37,7 @@ export const yandexProvider: SecretsProvider = {
 
   getPayload: (secretId, versionId) => yc.getPayload(secretId, versionId),
   listVersions: (secretId, pageToken) => yc.listVersions(secretId, 100, pageToken),
-  addVersion: (secretId, body) => yc.addVersion(secretId, body),
+  addVersion: addVersionWithRetention,
   scheduleVersionDestruction: (secretId, body) =>
     yc.scheduleVersionDestruction(secretId, body),
   cancelVersionDestruction: (secretId, versionId) =>

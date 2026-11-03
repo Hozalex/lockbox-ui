@@ -60,6 +60,20 @@ A single folder can hold secrets for several projects, grouped by a `project` la
 
 ## Service Account Permissions
 
+### Automatic Yandex version retention
+
+After a version is successfully added through this application, old ACTIVE
+versions are scheduled for destruction. Folders whose names contain `prod`
+(case-insensitive, matching the UI environment marker) retain the current and
+one newest other active version; older active versions are destroyed after
+30 days. Other folders retain only the current version and schedule all other
+active versions for destruction after 5 days. Existing destruction schedules
+are not extended. The current version is always protected, including rollbacks.
+This is triggered by version creation in the application, not a periodic cloud
+job; versions created outside the application are processed on the next such
+creation. Cleanup failures are logged and returned as warnings without undoing
+the successfully created version.
+
 The SA used for Keycloak mode (`YC_SA_AUTHORIZED_KEY_JSON`) must have the following roles **on the cloud** (or on each managed folder):
 
 | Role | Purpose |
