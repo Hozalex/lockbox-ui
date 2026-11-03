@@ -1,211 +1,287 @@
-# YC Lockbox UI
+# Lockbox UI
 
-Web UI for managing [Yandex Cloud Lockbox](https://yandex.cloud/ru-kz/docs/lockbox/) secrets in the Kazakhstan region.
+Web UI for managing secrets in **Yandex Cloud Lockbox (Kazakhstan)** or
+**Huawei Cloud CSMS (DEW)**. Each deployment uses one backend, selected with
+`SECRETS_PROVIDER=yandex|huawei` (default: `yandex`).
+
+## Provider comparison
+
+| Capability | Yandex Cloud Lockbox | Huawei Cloud CSMS |
+|---|---|---|
+| Top-level scope | Clouds and folders | One configured regional project |
+| Environments | Cloud folders | Configured values of the `environment` tag |
+| Projects in an environment | `project` label | `project` tag |
+| Payload | Key/value entries | JSON key/value entries or plain text |
+| Rename a secret | Supported | Not supported |
+| Deletion protection | Supported | Not supported |
+| Delete a secret | Delete through the provider API | Scheduled deletion with recovery window |
+| Restore a pending secret deletion | Not supported | Supported |
+| Remove a version | Scheduled destruction, cancellable | Set `expire_time`; no cancellation in this UI |
+| Automatic old-version retention | Applied after adding a version through the app | No automatic cleanup on version creation |
+
+Huawei version expiration is not physical deletion: expired versions remain in
+CSMS and are displayed as `EXPIRED`.
 
 ## Features
 
-- Browse secrets by folder with cloud/folder selector
-- View keys and values (hidden by default), table/JSON view
-- Create secrets via form fields or JSON paste
-- Version management: create, rollback, schedule destruction
-- KMS key picker (falls back to manual input if no access)
-- Dark theme (toggle + system preference auto-detect)
-- Secrets grouped into per-project tabs (by `project` label)
-- Keycloak OIDC authentication for all providers
-- Per-folder **and per-project** RBAC via Keycloak roles
+- Browse and search secrets by environment, with project tabs.
+- Create secrets from form fields or JSON; Huawei also supports plain text.
+- View and copy values, hidden by default, in table or JSON view.
+- Create versions, roll back and schedule version removal.
+- Select KMS keys, including per-environment Huawei defaults.
+- Sign in through Keycloak with server-side folder/project RBAC.
+- Light/dark themes and environment colour markers.
 
-## Stack
+## Authentication and access
 
-- **Next.js 16** (App Router) + TypeScript
-- **Tailwind CSS 4** + **shadcn/ui**
-- **next-auth v5** (Keycloak OIDC)
-- **Docker** (standalone build, Alpine)
+**Keycloak is required for both providers.** Configure the issuer, client ID,
+client secret, application URL and session secret. Add the application's
+`/api/auth/callback/keycloak` URL to the client's allowed redirect URIs.
 
----
+The app uses standard OIDC through the Keycloak provider. Role extraction expects
+Keycloak's `realm_access.roles` and `resource_access.<clientId>.roles`; an arbitrary
+OIDC provider requires adapting this mapping.
 
-## Authentication
+Browser authentication and cloud credentials are separate:
 
-### Keycloak OIDC (required)
+- **Yandex:** cloud calls use a server-side service-account authorized key.
+- **Huawei:** cloud calls use application AK/SK credentials or a federated token
+  obtained using Keycloak client credentials and Huawei IAM.
+- Yandex OAuth token login is disabled; old OAuth cookies do not grant access.
 
-Configure `KEYCLOAK_ISSUER`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET` and `NEXTAUTH_SECRET`.
-Users sign in via Keycloak; folder/project access is enforced by the application.
-Yandex Cloud calls use `YC_SA_AUTHORIZED_KEY_JSON` on the server. Huawei uses its configured AK/SK or OIDC federation credentials.
-Yandex OAuth token login is disabled, including for existing token cookies.
+### Keycloak roles
 
-#### Keycloak Role Format
-
-Roles are assigned in Keycloak (as **client roles** on the app's client, or realm roles) and control which folders/projects a user can see:
+Assign realm roles or client roles on the app's Keycloak client:
 
 | Role | Access |
-|------|--------|
-| `lockbox:admin` | Read-write to **all** folders and projects |
-| `lockbox:<folder>:rw` | Read-write to a whole folder (all projects + unlabeled secrets) |
-| `lockbox:<folder>:ro` | Read-only to a whole folder |
-| `lockbox:<folder>:<project>:rw` | Read-write to a single project inside a folder |
-| `lockbox:<folder>:<project>:ro` | Read-only to a single project inside a folder |
+|---|---|
+| `lockbox:admin` | Read/write across all environments and projects |
+| `lockbox:<folder>:ro` | Read-only across an environment |
+| `lockbox:<folder>:rw` | Read/write across an environment |
+| `lockbox:<folder>:<project>:ro` | Read-only in one project |
+| `lockbox:<folder>:<project>:rw` | Read/write in one project |
 
-`<folder>` must match the YC folder name **exactly** (case-sensitive). Effective access for a secret is the **max** of the folder-wide and matching project roles. A user with no matching role sees a clear "No access" message.
+For Yandex, `<folder>` is the exact cloud folder name. For Huawei, it is the
+configured environment name. Folder names are case-sensitive; project names
+are normalized to lowercase. The strongest matching permission wins.
 
-See `keycloak-roles.json` for an importable example (client roles, folders `dev/stage/prod`, projects `sample-app/demo-app`).
+`LOCKBOX_PROJECTS` is the comma-separated registry of project names, for example
+`sample-app,demo-app`. Missing or unknown project labels are treated as
+unassigned and are visible only to folder-wide users or administrators.
+Project tabs do not replace server-side access checks. Empty writable project
+tabs allow creating the first secret.
 
-#### Projects (intra-folder grouping)
+When `LOCKBOX_PROJECTS` is unset, project grouping/access is disabled and only
+folder-wide roles or administrator access apply.
 
-A single folder can hold secrets for several projects, grouped by a `project` label (e.g. `project=sample-app`) and surfaced as tabs in the UI. Valid project names come from the `LOCKBOX_PROJECTS` env registry; a label not in the registry — or missing — is treated as "no project" and is visible only to folder-wide / admin users. Enforcement is **server-side**; tabs are cosmetic.
+## Configuration
 
-- A project tab is shown even when empty so a user with `rw` on it can create the first secret.
-- Creating a secret injects the active tab's `project` label; moving a secret between projects (changing the label) re-checks `rw` on the destination.
-- **`LOCKBOX_PROJECTS` unset = feature off** — access falls back to folder-wide roles, no project label required (preserves pre-projects behavior).
+Start with [.env.example](.env.example). Example values are placeholders;
+replace them with your own configuration. Do not commit cloud credentials.
 
----
+### Common settings
 
-## Service Account Permissions
+| Variable | Required | Purpose |
+|---|---|---|
+| `SECRETS_PROVIDER` | No | `yandex` (default) or `huawei` |
+| `KEYCLOAK_ISSUER` | Yes | Keycloak realm URL |
+| `KEYCLOAK_CLIENT_ID` | Yes | Application OIDC client ID |
+| `KEYCLOAK_CLIENT_SECRET` | Yes | Application OIDC client secret |
+| `NEXTAUTH_URL` | Yes | Public application URL |
+| `NEXTAUTH_SECRET` | Yes | Random session-signing secret |
+| `LOCKBOX_PROJECTS` | No | Comma-separated project registry |
+| `LOG_LEVEL` | No | `debug`, `info` (default), `warn`, `error` |
 
-### Huawei list performance
+Generate a session secret with `openssl rand -base64 32`.
 
-The application prefers Huawei's tag-filter API (`csms:secret:getSecretsByTag`,
-alias `csms:tag:getSecretByTag`). If it returns 403, listing falls back to reading
-metadata and each secret's tags. Cold scans may be slow for large projects.
-Parallel requests share a scan across environments; list metadata is cached in
-process for 15 seconds after completion. Application writes invalidate this
-cache; external changes may take up to 15 seconds to appear. Authorization and
-project filtering still run for every API response. Secret values are never
-read by the list loader. `/api/secrets` includes `Server-Timing` measurements
-for access checks, provider listing, and project filtering.
+### Yandex Cloud Lockbox
 
-### Automatic Yandex version retention
+Set `SECRETS_PROVIDER=yandex` and `YC_SA_AUTHORIZED_KEY_JSON`. The key accepts
+raw JSON or base64-encoded JSON from a service-account authorized-key file.
 
-After a version is successfully added through this application, old ACTIVE
-versions are scheduled for destruction. Folders whose names contain `prod`
-(case-insensitive, matching the UI environment marker) retain the current and
-one newest other active version; older active versions are destroyed after
-30 days. Other folders retain only the current version and schedule all other
-active versions for destruction after 5 days. Existing destruction schedules
-are not extended. The current version is always protected, including rollbacks.
-This is triggered by version creation in the application, not a periodic cloud
-job; versions created outside the application are processed on the next such
-creation. Cleanup failures are logged and returned as warnings without undoing
-the successfully created version.
+The adapter currently uses Kazakhstan API endpoints; this is not a runtime
+region selector.
 
-The SA used for Keycloak mode (`YC_SA_AUTHORIZED_KEY_JSON`) must have the following roles **on the cloud** (or on each managed folder):
+| Service-account role | Purpose |
+|---|---|
+| `resource-manager.viewer` | Discover clouds and folders |
+| `lockbox.editor` | Manage secrets and versions |
+| `lockbox.payloadViewer` | Read secret values |
+| `kms.keys.encrypterDecrypter` | Work with KMS-protected secrets |
 
-| Role | Purpose |
-|------|---------|
-| `resource-manager.viewer` | List clouds and folders (required for the folder selector) |
-| `lockbox.editor` | Create, update, delete secrets and versions |
-| `lockbox.payloadViewer` | Read secret values (payload) |
-| `kms.keys.encrypterDecrypter` | Encrypt/decrypt secrets protected by a KMS key |
+Grant these roles at the managed cloud/folder scope. Cloud-level discovery
+permissions are needed to populate the normal cloud/folder selector.
 
-> Without `resource-manager.viewer` at cloud level the folder selector will be empty for all users.
+#### Automatic version retention
 
----
+After a version is successfully added through this application:
 
-## Environment Variables
+| Folder | Active versions retained | Destruction delay for older active versions |
+|---|---|---|
+| Name contains `prod`, case-insensitive | Current + newest other active version | 30 days |
+| Other folders | Current only | 5 days |
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `LOG_LEVEL` | No | Server log level: `debug`, `info`, `warn`, `error` (default: `info`) |
-| `LOCKBOX_PROJECTS` | No | Comma-separated registry of project names (lowercase), e.g. `sample-app,demo-app`. Enables per-project tabs and RBAC. Unset = feature off (folder-wide RBAC only). |
-| `KEYCLOAK_ISSUER` | No | Keycloak realm URL, e.g. `https://keycloak.example.com/realms/myrealm`. Enables Keycloak mode. |
-| `KEYCLOAK_CLIENT_ID` | If Keycloak | OIDC client ID |
-| `KEYCLOAK_CLIENT_SECRET` | If Keycloak | OIDC client secret |
-| `NEXTAUTH_URL` | If Keycloak | Public URL of the app, e.g. `https://lockbox.example.com` |
-| `NEXTAUTH_SECRET` | If Keycloak | Random secret for next-auth session signing |
-| `YC_SA_AUTHORIZED_KEY_JSON` | If Keycloak | SA authorized key JSON (raw or base64). Generate with: `yc iam key create --service-account-id <id> --output key.json` |
+The current version is protected, including after rollback. Already scheduled
+versions are not rescheduled. This is triggered by the app's version-creation
+flow, not a periodic cloud job. Versions added outside the application are
+processed on the next version creation through the app. Cleanup failure returns
+a warning without undoing the newly created version.
 
-See `.env.example` for a full template.
+### Huawei Cloud CSMS
 
----
+Set `SECRETS_PROVIDER=huawei` and the following settings:
 
-## Quick Start
+| Variable | Required | Purpose/default |
+|---|---|---|
+| `HUAWEI_REGION` | Yes | Actual Huawei region identifier |
+| `HUAWEI_PROJECT_ID` | Yes | Regional project ID |
+| `HUAWEI_ENVIRONMENTS` | Yes | Environment registry, e.g. `dev,stage,prod` |
+| `HUAWEI_ENTERPRISE_PROJECT_ID` | No | Restrict listing and creation to one enterprise project |
+| `HUAWEI_AUTH` | Recommended | `aksk` or `oidc`; inferred from presence of access key if unset |
+| `HUAWEI_KMS_DEFAULTS` | No | Environment-to-key-alias map; fallback `csms/default` |
+| `HUAWEI_FREE_NAMING_ENVS` | No | Environments exempt from automatic name prefixes |
+| `HUAWEI_SECRET_DELETION_DAYS` | No | Recovery window: default `prod:30,*:7`, validated range 7–30 days |
+| `HUAWEI_VERSION_RETENTION_DAYS` | No | Expiration delay when a version is marked for removal: default `prod:30,*:10` |
 
-### Local
+Maps use `environment:value` pairs separated by commas, with `*` as fallback.
+For example: `HUAWEI_KMS_DEFAULTS=prod:example-prod-key,*:csms/default`.
+
+**Environments are configured, not discovered from tags.** Adding a secret
+tagged `environment=test` requires adding `test` to `HUAWEI_ENVIRONMENTS` and
+granting the corresponding Keycloak role. Restart the application after changing
+Huawei configuration, which is read once per process.
+
+New secrets receive `environment` and `created_by` tags. Names normally receive
+an `<environment>-<project>-` prefix (or `<environment>-` without a project).
+Environment and creator tags are managed by the adapter.
+
+#### Cloud authentication
+
+For **AK/SK**, set:
+
+```dotenv
+HUAWEI_AUTH=aksk
+HUAWEI_ACCESS_KEY=<access-key>
+HUAWEI_SECRET_KEY=<secret-key>
+```
+
+For **OIDC federation**, configure a trusted identity provider and mapping in
+Huawei IAM, then set:
+
+```dotenv
+HUAWEI_AUTH=oidc
+HUAWEI_IDP_ID=<identity-provider-id>
+# Optional overrides; otherwise the app's KEYCLOAK_CLIENT_ID/SECRET are used:
+HUAWEI_OIDC_CLIENT_ID=<federation-client-id>
+HUAWEI_OIDC_CLIENT_SECRET=<federation-client-secret>
+```
+
+The federation client must issue an `id_token` for the application's
+`client_credentials` request with `scope=openid`. The adapter exchanges it for
+a Huawei project-scoped token. This server-to-server flow is distinct from the
+user's browser login.
+
+The Huawei identity needs CSMS/KMS permissions for the operations exposed by the
+UI. For fast environment listing, enable `csms:secret:getSecretsByTag`
+(alias `csms:tag:getSecretByTag`). A 403 on that endpoint triggers the fallback
+described below.
+
+## Loading, caching and diagnostics
+
+Secret lists contain metadata and tags/labels; they do not read payload values.
+Opening a secret loads its values and versions.
+
+Both providers cache payloads by concrete secret/version in server memory for
+5 minutes, with a capacity of 100 versions per provider. Concurrent reads of the
+same cache key share a load. Authorization still runs before cached values are
+returned. Payload responses use `Cache-Control: private, no-store`; the cache is
+not persisted to disk or shared across replicas.
+
+For Huawei:
+
+- The preferred list API filters by environment tag and returns metadata/tags
+  per page.
+- If tag filtering returns 403, the fallback lists all visible secrets and reads
+  each secret's tags. A cold scan can be slow.
+- Concurrent fallback requests share one scan across environments. List metadata
+  is cached for 15 seconds after completion; app writes invalidate it. External
+  changes may take up to 15 seconds to appear.
+- The client maintains a sliding budget of 240 CSMS requests/minute per process.
+  Calls wait only when the budget is exhausted. Multiple replicas and other
+  clients using the same cloud identity share cloud quotas, not this local budget.
+- The table does not bulk-load version counts for Huawei; versions are available
+  in the secret detail view.
+
+`GET /api/secrets` returns `Server-Timing` fields `access`, `provider` and
+`filter`. Use them in browser Network diagnostics alongside server logs.
+`?_rsc=...` requests are Next.js page prefetches and do not themselves load
+cloud secret payloads.
+
+## Run locally
+
+Requires Node.js 20 or later with support for the installed Next.js version.
 
 ```bash
-npm install
+cp .env.example .env
+# Configure Keycloak and the selected provider in .env first.
+npm ci
 npm run dev
 ```
 
-Open http://localhost:3000 and sign in.
-
-### Docker
+Open http://localhost:3000 and sign in through Keycloak.
 
 ```bash
-docker build -t lbox-ui .
-docker run -p 3000:3000 --env-file .env lbox-ui
+npm test
+npm run build
+npm start
 ```
 
-Or with compose:
+## Docker and GitHub Actions
 
 ```bash
-docker compose up -d
+docker build -t lockbox-ui .
+docker run --rm -p 3000:3000 --env-file .env lockbox-ui
 ```
 
----
-
-## API Endpoints (KZ region)
-
-| Service | URL |
-|---------|-----|
-| Lockbox (secrets) | `https://cpl.lockbox.api.yandexcloud.kz` |
-| Lockbox (payload) | `https://dpl.lockbox.api.yandexcloud.kz` |
-| KMS | `https://cpl.kms.api.yandexcloud.kz` |
-| IAM | `https://iam.api.yandexcloud.kz` |
-| Resource Manager | `https://resource-manager.api.yandexcloud.kz` |
-
----
-
-## Project Structure
-
-```
-src/
-├── app/
-│   ├── api/
-│   │   ├── auth/oauth/         # Retired token login; cookie cleanup
-│   │   ├── auth/[...nextauth]/ # Keycloak OIDC handlers (next-auth)
-│   │   ├── config/             # Feature flags (keycloakEnabled, projects registry)
-│   │   ├── clouds/             # List clouds
-│   │   ├── folders/            # List folders (RBAC-filtered for Keycloak)
-│   │   ├── my-folders/         # Flat folder list with role filtering
-│   │   ├── kms/keys/           # List KMS keys
-│   │   └── secrets/            # Secrets CRUD, versions, payload
-│   ├── login/                  # Login page
-│   └── secrets/                # Secrets list and detail pages
-├── components/
-│   ├── ui/                     # shadcn/ui primitives
-│   ├── folder-selector         # Cloud → folder picker
-│   ├── header                  # Navbar with auth mode badge
-│   ├── page-loader             # Full-page skeleton loader
-│   ├── secret-create-dialog
-│   ├── secret-detail           # Secret detail + versions
-│   ├── secrets-table           # Secrets list table
-│   ├── session-provider        # Keycloak session context
-│   ├── theme-toggle
-│   └── value-cell              # Show/hide secret value
-├── hooks/
-│   ├── useFolderAccess         # Folder/project access level + writable projects
-│   ├── useFolderStorage        # localStorage persistence
-│   └── useRequireAuth          # Redirect if not authenticated
-└── lib/
-    ├── api-rbac.ts             # Server-side RBAC helpers (folder + project)
-    ├── auth.ts                 # IAM token via SA key
-    ├── rbac.ts                 # Role parsing, project resolution, tab computation
-    ├── projects.ts             # Project registry (LOCKBOX_PROJECTS)
-    ├── types.ts                # Lockbox API types
-    ├── validation.ts           # Input validation
-    ├── yc-api.ts               # YC API HTTP client
-    └── logger.ts               # Server-side logger
-```
-
----
-
-## Docker Image
-
-Multi-stage build on `node:20-alpine`. The final image has npm, yarn, and corepack removed.
+Or build and run using the supplied Compose file:
 
 ```bash
-# Build
-docker build -t lbox-ui .
+docker compose up -d --build
+```
 
-# Scan for vulnerabilities
-trivy image lbox-ui --severity HIGH,CRITICAL
+The Dockerfile produces a standalone Next.js image using Node 20 Alpine and a
+non-root runtime user. Package managers are removed from the final image.
+Set `BUILD_VERSION` as a Docker build argument to override the version shown
+in the UI; otherwise it uses the package version.
+
+The [GitHub Actions workflow](.github/workflows/build.yml) builds and publishes
+to `ghcr.io/<owner>/<repository>` (lowercase), using `GITHUB_TOKEN`:
+
+- Push a Git tag to publish an image with that tag.
+- Run the workflow manually on `main` to publish `main` and `sha-<commit>` tags.
+- Ordinary branch pushes and pull requests do not trigger image builds.
+
+Use your repository's Packages page to locate the published image.
+Runtime configuration and cloud credentials must be supplied when starting the
+container.
+
+## Project structure
+
+```text
+.github/workflows/build.yml       # Docker build and GHCR publishing
+src/auth.ts                       # Keycloak OIDC and role extraction
+src/proxy.ts                      # Session protection and CSP
+src/app/api/                      # Provider-neutral API routes and access gates
+src/app/login/                    # Keycloak login
+src/app/secrets/                  # Secret list/detail pages
+src/components/                   # Forms, tables, selectors and UI primitives
+src/hooks/                        # Client authentication and access helpers
+src/lib/api-rbac.ts               # Server-side folder/project RBAC
+src/lib/rbac.ts                   # Pure role resolution
+src/lib/projects.ts               # Project registry
+src/lib/payload-cache.ts          # Bounded in-memory version cache
+src/lib/yc-api.ts                 # Yandex Cloud HTTP client
+src/lib/providers/yandex.ts       # Yandex adapter
+src/lib/providers/yandex-retention.ts # Yandex old-version cleanup
+src/lib/providers/huawei/         # Huawei config, auth, mapping and HTTP client
 ```
