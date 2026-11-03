@@ -40,7 +40,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export function SecretsTable({ folderId, folderName, onCreateClick }: SecretsTableProps) {
   const router = useRouter();
-  const { authMode, roles, projects: registry, capabilities } = useAuth();
+  const { authMode, roles, projects: registry, capabilities, provider } = useAuth();
   const [secrets, setSecrets] = useState<Secret[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -85,6 +85,12 @@ export function SecretsTable({ folderId, folderName, onCreateClick }: SecretsTab
   }, [secrets, secretProjects, currentTab]);
 
   const loadVersionCounts = useCallback(async (secretList: Secret[]) => {
+    // Huawei needs multiple upstream calls per secret, including RBAC checks.
+    // Versions remain available on the detail page; avoid a list-wide fan-out.
+    if (provider !== "yandex") {
+      setVersionCounts({});
+      return;
+    }
     const counts: Record<string, number | null> = {};
     secretList.forEach((s) => (counts[s.id] = null));
     setVersionCounts(counts);
@@ -106,7 +112,7 @@ export function SecretsTable({ folderId, folderName, onCreateClick }: SecretsTab
         }
       })
     );
-  }, []);
+  }, [provider]);
 
   const copyId = useCallback((id: string) => {
     navigator.clipboard.writeText(id);
@@ -324,7 +330,7 @@ export function SecretsTable({ folderId, folderName, onCreateClick }: SecretsTab
                     ? "…"
                     : versionCounts[secret.id] === -1
                       ? "—"
-                      : versionCounts[secret.id]}
+                      : (versionCounts[secret.id] ?? "—")}
                 </TableCell>
                 <TableCell>
                   {capabilities.keyCountInList

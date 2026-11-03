@@ -2,6 +2,9 @@ import { log } from "@/lib/logger";
 import { ProviderApiError } from "@/lib/providers/types";
 import { getHuaweiConfig, type HuaweiConfig } from "@/lib/providers/huawei/config";
 import { signRequest } from "@/lib/providers/huawei/signer";
+import { HuaweiRateLimiter } from "@/lib/providers/huawei/rate-limit";
+
+const requestLimiter = new HuaweiRateLimiter();
 
 const TIMEOUT_MS = 15_000;
 /** Refresh federated tokens this long before they expire. */
@@ -123,6 +126,8 @@ export async function hwRequest<T>(req: HuaweiRequest): Promise<T> {
 
   const baseHeaders: Record<string, string> = { "X-Project-Id": c.projectId };
   if (body !== undefined) baseHeaders["Content-Type"] = "application/json";
+  // Share one queue across all incoming users and sign only after waiting.
+  await requestLimiter.wait();
   const headers = await authHeaders(c, req.method, url, baseHeaders, body);
 
   log.debug(`${req.method} ${path}`);
