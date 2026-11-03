@@ -28,7 +28,9 @@ export async function GET(
 
   try {
     const data = await getSecretsProvider().getPayload(secretId, versionId);
-    return NextResponse.json(data);
+    return NextResponse.json(data, {
+      headers: { "Cache-Control": "private, no-store" },
+    });
   } catch (e) {
     return apiErrorResponse(e, `GET /api/secrets/${secretId}/payload`);
   }

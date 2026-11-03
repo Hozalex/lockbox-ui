@@ -12,19 +12,15 @@ import {
   normalizeProject,
 } from "@/lib/rbac";
 import { getProjectRegistry } from "@/lib/projects";
-import { tokenLoginEnabled } from "@/lib/providers/id";
 import type { FolderAccess } from "@/lib/rbac";
 import type { Secret, UpdateSecretRequest } from "@/lib/types";
 
 /**
  * Determine current auth mode from cookies.
- * Returns "oauth" if OAuth cookies are present, "keycloak" if next-auth session exists.
+ * Only Keycloak sessions are accepted.
  */
-async function getAuthMode(): Promise<"oauth" | "keycloak" | null> {
+async function getAuthMode(): Promise<"keycloak" | null> {
   const cookieStore = await cookies();
-  // Token sessions skip lbox RBAC (YC enforces with the user's token) — only
-  // valid for providers with token login; otherwise calls use app credentials.
-  if (tokenLoginEnabled() && cookieStore.get("oauth_token")?.value) return "oauth";
   if (
     cookieStore.get("authjs.session-token")?.value ||
     cookieStore.get("__Secure-authjs.session-token")?.value
@@ -111,7 +107,6 @@ export async function requireFolderViewAccess(
   folderId: string
 ): Promise<NextResponse | null> {
   const mode = await getAuthMode();
-  if (mode === "oauth") return null;
   if (mode !== "keycloak") {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
@@ -150,7 +145,6 @@ export async function filterSecretsByProjectAccess(
   secrets: Secret[]
 ): Promise<Secret[]> {
   const mode = await getAuthMode();
-  if (mode === "oauth") return secrets;
   if (mode !== "keycloak") return [];
 
   const roles = await getKeycloakRoles();
@@ -179,7 +173,6 @@ export async function requireCreateAccess(
   labels: Record<string, string> | undefined
 ): Promise<NextResponse | null> {
   const mode = await getAuthMode();
-  if (mode === "oauth") return null;
   if (mode !== "keycloak") {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
@@ -234,7 +227,6 @@ export async function requireSecretAccess(
   requiredAccess: FolderAccess
 ): Promise<NextResponse | null> {
   const mode = await getAuthMode();
-  if (mode === "oauth") return null;
   if (mode !== "keycloak") {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
@@ -287,7 +279,6 @@ export async function requireUpdateAccess(
   body: UpdateSecretRequest
 ): Promise<NextResponse | null> {
   const mode = await getAuthMode();
-  if (mode === "oauth") return null;
   if (mode !== "keycloak") {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
@@ -350,7 +341,6 @@ export async function filterFoldersByAccess<T extends { id: string; name: string
   folders: T[]
 ): Promise<Array<T & { access?: FolderAccess }>> {
   const mode = await getAuthMode();
-  if (mode === "oauth") return folders;
   if (mode !== "keycloak") return [];
 
   const roles = await getKeycloakRoles();

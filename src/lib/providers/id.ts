@@ -15,14 +15,7 @@ export function getProviderId(): ProviderId {
   return raw;
 }
 
-/**
- * Whether users may sign in by pasting a provider token (YC OAuth).
- *
- * Security: token sessions skip lbox RBAC because YC enforces access with the
- * user's own token. Providers without token login (Huawei) call the cloud with
- * the APP's credentials, so a token-session cookie must never grant access
- * there. Must agree with each provider's capabilities.tokenLogin (tested).
- */
+/** Token login is retired; all deployments require Keycloak. */
 export function tokenLoginEnabled(): boolean {
-  return getProviderId() === "yandex";
+  return false;
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { getSecretsProvider, tokenLoginEnabled } from "@/lib/providers";
+import { getSecretsProvider } from "@/lib/providers";
 import {
   isAdmin,
   folderHasAnyAccess,
@@ -10,7 +10,6 @@ import {
 import { getProjectRegistry } from "@/lib/projects";
 import { apiErrorResponse } from "@/lib/api-error";
 import { validateYCResourceId } from "@/lib/validation";
-import { cookies } from "next/headers";
 
 interface FolderEntry {
   id: string;
@@ -35,13 +34,11 @@ interface FolderEntry {
  */
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const isOAuth = tokenLoginEnabled() && !!cookieStore.get("oauth_token")?.value;
 
     // Determine roles for Keycloak users
     let roles: string[] = [];
     let admin = false;
-    if (!isOAuth) {
+    {
       const session = await auth();
       roles = session?.user?.roles || [];
       admin = isAdmin(roles);
@@ -76,7 +73,7 @@ export async function GET(request: NextRequest) {
       for (const cloud of clouds) {
         const foldersData = await getSecretsProvider().listFolders(cloud.id);
         for (const f of foldersData.folders || []) {
-          if (isOAuth || admin) {
+          if (admin) {
             addFolder({ id: f.id, name: f.name, cloudId: f.cloudId, access: admin ? "rw" : undefined });
           } else {
             const access = allowFolder(f.name);
@@ -102,7 +99,7 @@ export async function GET(request: NextRequest) {
         const f = await getSecretsProvider().getFolder(folderId);
         if (!f?.name) continue;
 
-        if (isOAuth || admin) {
+        if (admin) {
           addFolder({ id: f.id, name: f.name, access: admin ? "rw" : undefined });
         } else {
           const access = allowFolder(f.name);

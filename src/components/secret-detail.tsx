@@ -154,10 +154,11 @@ export function SecretDetail({ secretId, folderName = null }: SecretDetailProps)
         // 1) Secret must load first — everything depends on it
         const secretData = await fetchSecret();
         setSecret(secretData);
+        const currentVersionId = secretData.currentVersion?.id || undefined;
 
         // 2) Payload + versions in parallel
         const [payloadResult, versionsResult] = await Promise.allSettled([
-          fetchPayload(),
+          fetchPayload(currentVersionId),
           fetchVersions(),
         ]);
 
@@ -171,7 +172,7 @@ export function SecretDetail({ secretId, folderName = null }: SecretDetailProps)
           // Payload failed — retry once more after delay
           await new Promise((resolve) => setTimeout(resolve, 1500));
           try {
-            const pl = await fetchPayload();
+            const pl = await fetchPayload(currentVersionId);
             setEntries(pl.entries || []);
             setPlainText(pl.plainText);
             if (pl.versionId) setSelectedVersionId(pl.versionId);

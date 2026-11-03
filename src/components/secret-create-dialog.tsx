@@ -30,16 +30,12 @@ interface LabelEntry {
   value: string;
 }
 
-// Default KMS key: the one the provider flags for this folder (Huawei: per
-// environment); otherwise YC's kuber cluster key (`k8s-kms-key-...`);
-// otherwise the first available key.
-const CLUSTER_KEY_RE = /^k8s-kms-key/i;
+// Prefer the provider's default key; otherwise use the first available key.
 function pickDefaultKmsKey(
   keys: Array<{ id: string; name: string; isDefault?: boolean }>
 ): string {
   const flagged = keys.find((k) => k.isDefault);
-  const cluster = keys.find((k) => CLUSTER_KEY_RE.test(k.name || ""));
-  return (flagged ?? cluster ?? keys[0])?.id ?? "";
+  return (flagged ?? keys[0])?.id ?? "";
 }
 
 interface SecretCreateDialogProps {
@@ -198,7 +194,7 @@ export function SecretCreateDialog({
             setKmsCustom(true);
           } else {
             setKmsCustom(false);
-            // Pre-select the cluster KMS key, unless the user already picked one.
+            // Pre-select the default KMS key, unless the user already picked one.
             const def = pickDefaultKmsKey(keys);
             if (def) setKmsKeyId((prev) => prev || def);
           }

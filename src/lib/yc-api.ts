@@ -13,6 +13,10 @@ import type {
 } from "@/lib/types";
 import { getIamToken } from "@/lib/auth";
 import { log } from "@/lib/logger";
+import { createHash } from "node:crypto";
+import { PayloadCache } from "@/lib/payload-cache";
+
+const payloadCache = new PayloadCache<Payload>();
 
 const LOCKBOX_API = "https://cpl.lockbox.api.yandexcloud.kz/lockbox/v1";
 const PAYLOAD_API =
@@ -55,9 +59,10 @@ async function request<T>(
   baseUrl: string,
   path: string,
   options: RequestInit = {},
-  treat404AsEmpty = false
+  treat404AsEmpty = false,
+  token?: string
 ): Promise<T> {
-  const iamToken = await requireIamToken();
+  const iamToken = token ?? await requireIamToken();
   const method = options.method || "GET";
   const url = `${baseUrl}${path}`;
 
@@ -193,13 +198,21 @@ export function deleteSecret(secretId: string) {
 }
 
 // Payload
-export function getPayload(secretId: string, versionId?: string) {
-  const params = versionId
-    ? `?versionId=${encodeURIComponent(versionId)}`
-    : "";
-  return request<Payload>(
-    PAYLOAD_API,
-    `/secrets/${secretId}/payload${params}`
+export async function getPayload(secretId: string, versionId?: string) {
+  const token = await requireIamToken();
+  // Verify the secret is still accessible on every hit; never cache "current".
+  const secret = await request<Secret>(LOCKBOX_API, `/secrets/${secretId}`, {}, false, token);
+  const id = versionId ?? secret.currentVersion?.id;
+  if (!id) throw new YCApiError(404, "У секрета нет текущей версии");
+  // OAuth calls use the user's IAM credentials. Isolate cached values by token
+  // and use that same token for the upstream read to avoid identity mix-ups.
+  const identity = createHash("sha256").update(token).digest("hex");
+  return payloadCache.get(JSON.stringify([identity, secretId, id]), () =>
+    request<Payload>(
+      PAYLOAD_API,
+      `/secrets/${secretId}/payload?versionId=${encodeURIComponent(id)}`,
+      {}, false, token
+    )
   );
 }
 

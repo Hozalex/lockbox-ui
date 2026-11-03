@@ -9,7 +9,7 @@ import type { SecretsProvider } from "@/lib/providers/types";
 export const yandexProvider: SecretsProvider = {
   id: "yandex",
   capabilities: {
-    tokenLogin: true,
+    tokenLogin: false,
     multipleClouds: true,
     renameSecret: true,
     deletionProtection: true,

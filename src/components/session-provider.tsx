@@ -31,8 +31,6 @@ interface AuthContextType {
   provider: "yandex" | "huawei" | null;
   capabilities: ProviderCapabilities;
   policy: ProviderUiPolicy;
-  /** OAuth login (paste token). */
-  login: (token: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
 }
 
@@ -46,7 +44,6 @@ const AuthContext = createContext<AuthContextType>({
   provider: null,
   capabilities: DEFAULT_CAPABILITIES,
   policy: DEFAULT_POLICY,
-  login: async () => ({ ok: false }),
   logout: async () => {},
 });
 
@@ -83,18 +80,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        // Check OAuth session
-        const oauthRes = await fetch("/api/auth/oauth");
-        const oauthData = await oauthRes.json();
-
-        if (oauthData.authenticated) {
-          setAuthenticated(true);
-          setAuthMode("oauth");
-          setRoles([]);
-          setLoading(false);
-          return;
-        }
-
         // Check Keycloak session (next-auth)
         const kcRes = await fetch("/api/auth/session");
         if (kcRes.ok) {
@@ -121,36 +106,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
-  // OAuth login (paste token)
-  const login = useCallback(async (token: string) => {
-    try {
-      const res = await fetch("/api/auth/oauth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setAuthenticated(true);
-        setAuthMode("oauth");
-        return { ok: true };
-      }
-      return { ok: false, error: data.error };
-    } catch (e) {
-      return { ok: false, error: (e as Error).message };
-    }
-  }, []);
-
   const logout = useCallback(async () => {
-    if (authMode === "keycloak") {
-      window.location.href = "/api/auth/signout";
-      return;
-    }
-    await fetch("/api/auth/oauth", { method: "DELETE" });
-    setAuthenticated(false);
-    setAuthMode(null);
-    setRoles([]);
-  }, [authMode]);
+    window.location.href = "/api/auth/signout";
+  }, []);
 
   const contextValue = useMemo(
     () => ({
@@ -163,7 +121,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       provider,
       capabilities,
       policy,
-      login,
       logout,
     }),
     [
@@ -176,7 +133,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       provider,
       capabilities,
       policy,
-      login,
       logout,
     ]
   );

@@ -11,33 +11,26 @@ Web UI for managing [Yandex Cloud Lockbox](https://yandex.cloud/ru-kz/docs/lockb
 - KMS key picker (falls back to manual input if no access)
 - Dark theme (toggle + system preference auto-detect)
 - Secrets grouped into per-project tabs (by `project` label)
-- Dual authentication: Yandex OAuth token + Keycloak OIDC (optional)
+- Keycloak OIDC authentication for all providers
 - Per-folder **and per-project** RBAC via Keycloak roles
 
 ## Stack
 
 - **Next.js 16** (App Router) + TypeScript
 - **Tailwind CSS 4** + **shadcn/ui**
-- **next-auth v5** (Keycloak OIDC, optional)
+- **next-auth v5** (Keycloak OIDC)
 - **Docker** (standalone build, Alpine)
 
 ---
 
 ## Authentication
 
-### Mode 1 — Yandex OAuth (always available)
+### Keycloak OIDC (required)
 
-1. Click **"Open Yandex OAuth"** on the login page
-2. Authorize in Yandex, copy the token
-3. Paste the token and click **"Sign in"**
-
-The OAuth token is exchanged for an IAM token (12 h) with auto-refresh. Tokens are stored in httpOnly cookies and never exposed to the browser.
-
-### Mode 2 — Keycloak OIDC (optional)
-
-Enabled when `KEYCLOAK_ISSUER` env variable is set. A **"Sign in via Keycloak"** button appears on the login page.
-
-IAM tokens are obtained via a **YC Service Account** authorized key (`YC_SA_AUTHORIZED_KEY_JSON`). The SA key is only used server-side; user credentials are never sent to YC.
+Configure `KEYCLOAK_ISSUER`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET` and `NEXTAUTH_SECRET`.
+Users sign in via Keycloak; folder/project access is enforced by the application.
+Yandex Cloud calls use `YC_SA_AUTHORIZED_KEY_JSON` on the server. Huawei uses its configured AK/SK or OIDC federation credentials.
+Yandex OAuth token login is disabled, including for existing token cookies.
 
 #### Keycloak Role Format
 
@@ -62,7 +55,6 @@ A single folder can hold secrets for several projects, grouped by a `project` la
 - A project tab is shown even when empty so a user with `rw` on it can create the first secret.
 - Creating a secret injects the active tab's `project` label; moving a secret between projects (changing the label) re-checks `rw` on the destination.
 - **`LOCKBOX_PROJECTS` unset = feature off** — access falls back to folder-wide roles, no project label required (preserves pre-projects behavior).
-- For OAuth users projects are purely cosmetic grouping (YC IAM enforces; all secrets shown).
 
 ---
 
@@ -142,7 +134,7 @@ docker compose up -d
 src/
 ├── app/
 │   ├── api/
-│   │   ├── auth/oauth/         # Yandex OAuth login/logout/check
+│   │   ├── auth/oauth/         # Retired token login; cookie cleanup
 │   │   ├── auth/[...nextauth]/ # Keycloak OIDC handlers (next-auth)
 │   │   ├── config/             # Feature flags (keycloakEnabled, projects registry)
 │   │   ├── clouds/             # List clouds
@@ -160,7 +152,7 @@ src/
 │   ├── secret-create-dialog
 │   ├── secret-detail           # Secret detail + versions
 │   ├── secrets-table           # Secrets list table
-│   ├── session-provider        # Unified auth context (OAuth + Keycloak)
+│   ├── session-provider        # Keycloak session context
 │   ├── theme-toggle
 │   └── value-cell              # Show/hide secret value
 ├── hooks/
@@ -169,7 +161,7 @@ src/
 │   └── useRequireAuth          # Redirect if not authenticated
 └── lib/
     ├── api-rbac.ts             # Server-side RBAC helpers (folder + project)
-    ├── auth.ts                 # IAM token (OAuth cookie or SA key)
+    ├── auth.ts                 # IAM token via SA key
     ├── rbac.ts                 # Role parsing, project resolution, tab computation
     ├── projects.ts             # Project registry (LOCKBOX_PROJECTS)
     ├── types.ts                # Lockbox API types

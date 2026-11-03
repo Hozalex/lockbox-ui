@@ -10,6 +10,10 @@ import {
   getHuaweiConfig,
 } from "@/lib/providers/huawei/config";
 import { hwRequest } from "@/lib/providers/huawei/client";
+import { PayloadCache } from "@/lib/payload-cache";
+import type { Payload } from "@/lib/types";
+
+const payloadCache = new PayloadCache<Payload>();
 import {
   applyPayloadChanges,
   requirePlainText,
@@ -407,15 +411,20 @@ export const huaweiProvider: SecretsProvider = {
   // ---- Payload & versions ----
 
   async getPayload(name, versionId) {
-    await showSecret(name);
+    const secret = await showSecret(name);
     const id = versionId ?? currentVersionId(await versionMetas(name));
     if (!id) throw new ProviderApiError(404, `У секрета «${name}» нет текущей версии`);
-    const parsed = parsePayload(await readVersion(name, id));
-    return {
-      versionId: id,
-      entries: parsed.entries,
-      ...(parsed.format === "plain" ? { plainText: parsed.entries[0]?.textValue ?? "" } : {}),
-    };
+    // UUID distinguishes deleted/recreated secrets with the same name. Resolve
+    // the current version afresh and check scope before consulting the cache.
+    const c = getHuaweiConfig();
+    return payloadCache.get(JSON.stringify([c.region, c.projectId, secret.id, id]), async () => {
+      const parsed = parsePayload(await readVersion(name, id));
+      return {
+        versionId: id,
+        entries: parsed.entries,
+        ...(parsed.format === "plain" ? { plainText: parsed.entries[0]?.textValue ?? "" } : {}),
+      };
+    });
   },
 
   async listVersions(name) {

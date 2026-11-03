@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import type { NextAuthRequest } from "next-auth";
-import { tokenLoginEnabled } from "@/lib/providers/id";
 
 const PUBLIC_PATHS = [
   "/login",
@@ -28,7 +27,7 @@ function buildCsp(nonce: string): string {
     ? new URL(process.env.KEYCLOAK_ISSUER).origin
     : "";
 
-  const connectSrc = ["'self'", "https://oauth.yandex.ru", keycloakOrigin]
+  const connectSrc = ["'self'", keycloakOrigin]
     .filter(Boolean)
     .join(" ");
 
@@ -65,16 +64,6 @@ export default auth(function proxy(request) {
 
   if (isPublic(pathname)) {
     return NextResponse.next();
-  }
-
-  // ── OAuth: httpOnly cookie — cannot be planted by client JS ──────────────
-  // Token sessions are only honoured for providers with token login (YC).
-  const oauthToken = tokenLoginEnabled()
-    ? request.cookies.get("oauth_token")?.value
-    : undefined;
-  if (oauthToken) {
-    if (pathname.startsWith("/api/")) return NextResponse.next();
-    return withNonce(request);
   }
 
   // ── Keycloak: request.auth is non-null only if JWT signature is valid ─────

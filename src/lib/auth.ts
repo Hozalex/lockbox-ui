@@ -1,10 +1,6 @@
-import { cookies } from "next/headers";
 import { createSign } from "crypto";
 import { log } from "@/lib/logger";
 
-export const OAUTH_COOKIE = "oauth_token";
-export const IAM_COOKIE = "iam_token";
-export const IAM_EXPIRES_COOKIE = "iam_expires_at";
 export const YC_IAM_ENDPOINT = "https://iam.api.yandexcloud.kz/iam/v1/tokens";
 
 // Buffer: refresh IAM token 5 minutes before expiry
@@ -118,83 +114,7 @@ async function getSaIamToken(): Promise<string | null> {
   }
 }
 
-// ---- Auth mode detection ----
-
-export type AuthMode = "oauth" | "keycloak";
-
-/**
- * Determine current auth mode.
- * If the request has an OAuth cookie, use OAuth mode.
- * Otherwise, if Keycloak is configured, use Keycloak mode.
- */
-export async function getAuthMode(): Promise<AuthMode | null> {
-  const cookieStore = await cookies();
-  const oauthToken = cookieStore.get(OAUTH_COOKIE)?.value;
-
-  if (oauthToken) return "oauth";
-  if (process.env.KEYCLOAK_ISSUER) return "keycloak";
-  return null;
-}
-
-// ---- IAM token retrieval ----
-
-/**
- * Get an IAM token for YC API calls.
- * - OAuth mode: from user's OAuth token (cookie-based)
- * - Keycloak mode: from service account authorized key
- */
+/** YC calls use only the server-side service account. */
 export async function getIamToken(): Promise<string | null> {
-  const cookieStore = await cookies();
-  const oauthToken = cookieStore.get(OAUTH_COOKIE)?.value;
-
-  // If user has an OAuth cookie, use the OAuth flow
-  if (oauthToken) {
-    return getOAuthIamToken(cookieStore, oauthToken);
-  }
-
-  // Otherwise, try service account (Keycloak mode)
   return getSaIamToken();
-}
-
-async function getOAuthIamToken(
-  cookieStore: Awaited<ReturnType<typeof cookies>>,
-  oauthToken: string
-): Promise<string | null> {
-  const iamToken = cookieStore.get(IAM_COOKIE)?.value;
-  const expiresAt = cookieStore.get(IAM_EXPIRES_COOKIE)?.value;
-
-  // If IAM token is still valid, return it
-  if (iamToken && expiresAt) {
-    const expiresMs = new Date(expiresAt).getTime();
-    if (Date.now() < expiresMs - REFRESH_BUFFER_MS) {
-      return iamToken;
-    }
-  }
-
-  // IAM expired or missing — try to refresh using OAuth token
-  try {
-    const res = await fetch(YC_IAM_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ yandexPassportOauthToken: oauthToken }),
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      log.info("IAM token refreshed via OAuth");
-      return data.iamToken as string;
-    }
-    log.warn("IAM token refresh failed:", res.status);
-  } catch (e) {
-    log.error("IAM token refresh error:", e);
-  }
-
-  return iamToken || null;
-}
-
-/**
- * Check if Keycloak auth is enabled (KEYCLOAK_ISSUER env var is set).
- */
-export function isKeycloakEnabled(): boolean {
-  return !!process.env.KEYCLOAK_ISSUER;
 }

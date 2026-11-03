@@ -31,7 +31,7 @@ describe("getSecretsProvider", () => {
     delete process.env.SECRETS_PROVIDER;
     const p = getSecretsProvider();
     expect(p.id).toBe("yandex");
-    expect(p.capabilities.tokenLogin).toBe(true);
+    expect(p.capabilities.tokenLogin).toBe(false);
   });
 
   it("validates IDs with YC rules for yandex", () => {
