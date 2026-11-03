@@ -60,6 +60,18 @@ A single folder can hold secrets for several projects, grouped by a `project` la
 
 ## Service Account Permissions
 
+### Huawei list performance
+
+The application prefers Huawei's tag-filter API (`csms:secret:getSecretsByTag`,
+alias `csms:tag:getSecretByTag`). If it returns 403, listing falls back to reading
+metadata and each secret's tags. Cold scans may be slow for large projects.
+Parallel requests share a scan across environments; list metadata is cached in
+process for 15 seconds after completion. Application writes invalidate this
+cache; external changes may take up to 15 seconds to appear. Authorization and
+project filtering still run for every API response. Secret values are never
+read by the list loader. `/api/secrets` includes `Server-Timing` measurements
+for access checks, provider listing, and project filtering.
+
 ### Automatic Yandex version retention
 
 After a version is successfully added through this application, old ACTIVE

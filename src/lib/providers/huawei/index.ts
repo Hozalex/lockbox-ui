@@ -11,9 +11,12 @@ import {
 } from "@/lib/providers/huawei/config";
 import { hwRequest } from "@/lib/providers/huawei/client";
 import { PayloadCache } from "@/lib/payload-cache";
+import { ListCache } from "@/lib/providers/huawei/list-cache";
 import type { Payload } from "@/lib/types";
+import type { Secret } from "@/lib/types";
 
 const payloadCache = new PayloadCache<Payload>();
+const listCache = new ListCache<Secret[]>();
 import {
   applyPayloadChanges,
   requirePlainText,
@@ -39,6 +42,7 @@ const BUILTIN_STAGES = ["SYSCURRENT", "SYSPREVIOUS"];
 const enc = encodeURIComponent;
 
 function op(secretName: string, description = ""): Operation {
+  listCache.clear();
   return {
     id: "",
     description,
@@ -82,6 +86,7 @@ async function secretTags(secretId: string): Promise<Tag[]> {
 
 async function batchTags(secretId: string, action: "create" | "delete", tags: Tag[]) {
   if (tags.length === 0) return;
+  listCache.clear();
   await hwRequest({
     method: "POST",
     path: `/csms/${enc(secretId)}/tags/action`,
@@ -191,7 +196,7 @@ async function listByTagFilter(env: string) {
  * Fallback when the tag filter API is denied (csms:tag:getSecretByTag):
  * list all visible secrets, then read each one's tags (bounded concurrency).
  */
-async function listByScan(env: string) {
+async function scanMetadata() {
   const all: HwSecretMeta[] = [];
   let marker: string | undefined;
   for (let page = 0; page < 50; page++) {
@@ -205,7 +210,7 @@ async function listByScan(env: string) {
     if (!marker) break;
   }
   const tagged = await mapLimit(all, 8, async (s) => ({ s, tags: await secretTags(s.id) }));
-  return tagged.filter(({ tags }) => environmentOf(tags) === env).map(({ s, tags }) => mapSecret(s, tags));
+  return tagged.map(({ s, tags }) => mapSecret(s, tags));
 }
 
 /** When the tag filter was last denied; retried after a while in case it gets granted. */
@@ -287,18 +292,31 @@ export const huaweiProvider: SecretsProvider = {
 
   async listSecrets(folderId) {
     const env = requireEnvironment(folderId);
-    if (Date.now() - tagFilterDeniedAt > TAG_FILTER_RETRY_MS) {
+    const c = getHuaweiConfig();
+    const scope = JSON.stringify([c.region, c.projectId, c.enterpriseProjectId]);
+    const started = Date.now();
+    if (!tagFilterDeniedAt || Date.now() - tagFilterDeniedAt > TAG_FILTER_RETRY_MS) {
       try {
-        return { secrets: await listByTagFilter(env) };
+        const secrets = await listCache.get(`${scope}:filter:${env}`, () => listByTagFilter(env));
+        log.info(`Huawei filtered list: ${secrets.length} secrets, ${Date.now() - started}ms`);
+        return { secrets };
       } catch (e) {
         if ((e as ProviderApiError).status !== 403) throw e;
         tagFilterDeniedAt = Date.now();
         log.warn(
-          "CSMS tag filter denied (csms:tag:getSecretByTag) — listing secrets one by one; grant it for single-call listing"
+          "CSMS tag filter denied (csms:secret:getSecretsByTag / csms:tag:getSecretByTag) — falling back to a shared metadata scan"
         );
       }
     }
-    return { secrets: await listByScan(env) };
+    const all = await listCache.get(`${scope}:scan`, async () => {
+      const scanStarted = Date.now();
+      const result = await scanMetadata();
+      log.info(`Huawei metadata scan: ${result.length} secrets, ${Date.now() - scanStarted}ms`);
+      return result;
+    });
+    const secrets = all.filter((s) => s.folderId === env);
+    log.info(`Huawei secrets list: ${secrets.length} secrets, ${Date.now() - started}ms`);
+    return { secrets };
   },
 
   async getSecret(name) {

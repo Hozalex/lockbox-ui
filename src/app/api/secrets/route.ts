@@ -16,6 +16,7 @@ import {
 import type { CreateSecretRequest } from "@/lib/types";
 
 export async function GET(request: NextRequest) {
+  const started = performance.now();
   const folderId = request.nextUrl.searchParams.get("folderId");
   if (!folderId) {
     return badRequest("folderId is required");
@@ -27,18 +28,26 @@ export async function GET(request: NextRequest) {
   // RBAC: user must have some access in the folder (folder-wide or a project)
   const denied = await requireFolderViewAccess(folderId);
   if (denied) return denied;
+  const authorized = performance.now();
 
   const pageToken =
     request.nextUrl.searchParams.get("pageToken") || undefined;
 
   try {
     const data = await getSecretsProvider().listSecrets(folderId, pageToken);
+    const listed = performance.now();
     // Filter to secrets the user may see, based on each secret's project label.
     const secrets = await filterSecretsByProjectAccess(
       folderId,
       data.secrets || []
     );
-    return NextResponse.json({ ...data, secrets });
+    const filtered = performance.now();
+    return NextResponse.json({ ...data, secrets }, {
+      headers: {
+        "Cache-Control": "private, no-store",
+        "Server-Timing": `access;dur=${(authorized - started).toFixed(1)}, provider;dur=${(listed - authorized).toFixed(1)}, filter;dur=${(filtered - listed).toFixed(1)}`,
+      },
+    });
   } catch (e) {
     return apiErrorResponse(e, `GET /api/secrets (folderId=${folderId})`);
   }
