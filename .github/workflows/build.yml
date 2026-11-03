@@ -1,6 +1,7 @@
 name: Build and publish Docker image
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - "*"
@@ -15,6 +16,7 @@ concurrency:
 
 jobs:
   docker:
+    if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -39,6 +41,8 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=ref,event=tag
+            type=raw,value=main,enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=sha,prefix=sha-,enable=${{ github.event_name == 'workflow_dispatch' }}
 
       - name: Build and publish image
         uses: docker/build-push-action@v6
